@@ -5,6 +5,7 @@ fn main() {
         "./orderbook",
         BuildArgs {
             features: vec!["sp1".to_string()],
+            output_directory: Some("../elf".to_string()),
             ..Default::default()
         },
     )
