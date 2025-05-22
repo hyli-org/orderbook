@@ -1,0 +1,136 @@
+.market-selector-container {
+  position: relative;
+  display: inline-block;
+  /* font-family is inherited from MarketInfoBanner */
+}
+
+.market-selector-button {
+  background-color: transparent; /* Match banner background */
+  color: #d1d4dc; /* Match banner text color */
+  padding: 8px 10px; /* Reduced padding for a tighter fit */
+  font-size: 1.125rem; /* 18px, to match the image */
+  font-weight: 600; /* Bold like in the image */
+  border: none; /* No border by default within the banner */
+  /* border-radius will be handled by MarketInfoBanner or a wrapper if needed */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: auto; /* Allow it to size based on content */
+  transition: color 0.2s ease; /* Transition for text color */
+}
+
+.market-selector-button:hover {
+  background-color: transparent; /* No background change on hover */
+  color: #ffffff; /* Brighter text on hover */
+}
+
+.market-selector-button .arrow {
+  margin-left: 8px; /* Slightly reduced margin */
+  font-size: 0.7em; /* Adjusted size */
+  transition: transform 0.2s ease;
+  color: #848e9c; /* Arrow color to match labels */
+}
+
+.market-selector-button:hover .arrow {
+  color: #d1d4dc; /* Brighter arrow on hover */
+}
+
+.market-selector-button .arrow.up {
+  transform: rotate(180deg);
+}
+
+/* Dropdown styling remains largely the same, but ensure it fits the new context */
+.market-selector-dropdown {
+  position: absolute;
+  top: calc(100% + 5px); /* Position below the button with a small gap */
+  left: 0;
+  background-color: #2a2d3a; /* Darker background for dropdown */
+  border: 1px solid #404457;
+  border-radius: 6px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 280px; /* Wider dropdown for better readability */
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.market-search-bar {
+  padding: 10px;
+  border-bottom: 1px solid #404457;
+}
+
+.market-search-bar input {
+  width: calc(100% - 20px); /* Full width minus padding */
+  padding: 10px;
+  background-color: #1e1f26; /* Match banner background if possible, or slightly darker */
+  border: 1px solid #404457;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font-size: 0.9rem;
+}
+
+.market-search-bar input::placeholder {
+  color: #848e9c;
+}
+
+.market-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.market-list-item {
+  padding: 12px 15px;
+  cursor: pointer;
+  color: #c0c0c0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #34384a; /* Separator color */
+  transition: background-color 0.15s ease;
+  display: flex; /* For potential future additions like icons or sub-text */
+  justify-content: space-between;
+  align-items: center;
+}
+
+.market-list-item:last-child {
+  border-bottom: none;
+}
+
+.market-list-item:hover {
+  background-color: #34384a;
+  color: #ffffff;
+}
+
+.market-list-item.active {
+  background-color: #007bff; /* Standard blue for active selection */
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.market-list-item.active:hover {
+  background-color: #0069d9;
+}
+
+.market-name {
+  font-weight: 500;
+}
+
+/* Scrollbar styles can be kept or adjusted as needed */
+.market-selector-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.market-selector-dropdown::-webkit-scrollbar-track {
+  background: #2a2d3a;
+  border-radius: 0 0 6px 0;
+}
+
+.market-selector-dropdown::-webkit-scrollbar-thumb {
+  background-color: #404457;
+  border-radius: 4px;
+  border: 2px solid #2a2d3a;
+}
+
+.market-selector-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: #50556e;
+} 

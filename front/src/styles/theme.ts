@@ -3,8 +3,8 @@ export const theme = {
     background: '#212328', // Slightly lighter dark background
     text: '#FFFFFF',       // Pure White for max contrast
     textSecondary: '#B0B0B0', // Lighter muted text color
-    accent1: '#2D7F8F',   // Dust-Teal (ask)
-    accent1Hover: '#246a78', // Darker Dust-Teal for hover states
+    accent1: '#F45E45',   // Hyli Orange
+    accent1Hover: '#db533b', // Darker Dust-Teal for hover states
     accent2: '#FF6B35',    // Flame-Orange
     positive: '#4CAF50',   // Vibrant Green
     negative: '#F44336',    // Vibrant Red

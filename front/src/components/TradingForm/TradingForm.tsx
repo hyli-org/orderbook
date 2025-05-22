@@ -1,13 +1,25 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
+import type { Position } from '../../types/position'; // Import Position interface
+
+// Assuming Position interface is available or imported
+// For now, let's define it here if not globally available in this context
+/*
+interface Position {
+  asset: string;
+  size: number;
+  entryPrice: number;
+  markPrice: number;
+  pnl: number;
+  pnlPercent: number;
+}
+*/
 
 interface TradingFormProps {
-  onSubmit?: (formData: {
-    type: 'buy' | 'sell';
-    amount: number;
-    price: number | 'market';
-  }) => void;
+  // assetName: string; // Added to identify the asset being traded
+  onSubmit?: (position: Position) => void; // Modified to pass the whole Position object
+  marketPrice?: number; // Added to receive the current market price
 }
 
 const FormContainer = styled.div`
@@ -54,17 +66,33 @@ const OrderTypeContainer = styled.div`
 
 const OrderTypeButton = styled.button<{ active: boolean; isBuy: boolean }>`
   flex: 1;
-  padding: 0.5rem;
+  padding: 0.6rem 0.5rem;
   border-radius: 4px;
-  border: none;
-  background-color: ${props => props.active 
-    ? (props.isBuy ? theme.colors.positive : theme.colors.negative)
-    : 'transparent'};
-  color: ${props => props.active ? '#fff' : props.isBuy ? theme.colors.positive : theme.colors.negative};
+  border: 1px solid transparent;
+  background-color: ${props => 
+    props.active 
+      ? (props.isBuy ? theme.colors.positive : theme.colors.negative) 
+      : '#2a2a2b'};
+  color: ${props => 
+    props.active 
+      ? '#fff' 
+      : (props.isBuy ? theme.colors.positive : theme.colors.negative)};
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
-  border: 1px solid ${props => props.isBuy ? theme.colors.positive : theme.colors.negative};
+  transition: all 0.2s ease-in-out;
+
+  &:hover:not(:disabled) {
+    background-color: ${props => 
+      props.isBuy ? theme.colors.positive : theme.colors.negative};
+    // Simplified hover to avoid darken, adjust as needed
+    opacity: 0.8;
+    color: #fff;
+  }
+
+  &:not(:active) {
+    border: 1px solid ${props => props.isBuy ? theme.colors.positive : theme.colors.negative};
+  }
 `;
 
 const FormGroup = styled.div`
@@ -133,93 +161,25 @@ const ChevronIcon = styled.span`
   font-size: 10px;
 `;
 
-const SliderContainer = styled.div`
-  margin: 1rem 0;
-`;
-
-const SliderInput = styled.input`
-  width: 100%;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  background: #232324;
-  border-radius: 2px;
-  outline: none;
-  margin: 1rem 0;
-  
-  &::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background-color: ${theme.colors.accent1};
-    border: 2px solid #fff;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
-    transition: background-color 0.2s;
-    
-    &:hover {
-      background-color: ${theme.colors.accent1Hover};
-    }
-  }
-  
-  &::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background-color: ${theme.colors.accent1};
-    border: 2px solid #fff;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
-    transition: background-color 0.2s;
-    
-    &:hover {
-      background-color: ${theme.colors.accent1Hover};
-    }
-  }
-`;
-
-const SliderTicks = styled.div`
-  display: flex;
-  justify-content: space-between;
-  padding: 0 8px;
-`;
-
-const SliderTick = styled.div`
-  width: 6px;
-  height: 6px;
-  background-color: #3a3a3b;
-  border-radius: 50%;
-  margin-top: -16px;
-`;
-
-const PercentageInput = styled.input`
-  width: 40px;
-  padding: 0.25rem;
-  text-align: right;
-  background-color: #232324;
-  border: 1px solid #2a2a2b;
-  border-radius: 4px;
-  color: ${theme.colors.text};
-  margin-left: 0.5rem;
-  font-size: 12px;
-`;
-
 const PlaceOrderButton = styled.button`
   width: 100%;
-  padding: 0.6rem;
-  margin: 0.5rem 0;
+  padding: 0.75rem;
+  margin: 1rem 0 0.5rem;
   border: none;
   border-radius: 4px;
-  background-color: ${theme.colors.accent1};
+  background-color: ${props => props.disabled ? '#555' : theme.colors.accent1};
   color: #fff;
   font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
+  font-size: 15px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  transition: background-color 0.2s ease-in-out;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background-color: ${theme.colors.accent1Hover};
+  }
+
+  &:disabled {
+    opacity: 0.7;
   }
 `;
 
@@ -242,32 +202,74 @@ const HighlightedText = styled.span`
   color: ${theme.colors.accent1};
 `;
 
-export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit }) => {
+const SliderInput = styled.input`
+  width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+  accent-color: ${theme.colors.accent1};
+`;
+
+const PercentageDisplay = styled.div`
+  font-size: 12px;
+  color: ${theme.colors.textSecondary};
+  text-align: right;
+  margin-bottom: 0.5rem;
+`;
+
+export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice }) => {
   const [activeTab, setActiveTab] = useState<'market' | 'limit' | 'pro'>('market');
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState<string>('');
   const [percentage, setPercentage] = useState<number>(0);
 
-  const handlePercentageChange = (newPercentage: number) => {
-    setPercentage(Math.min(100, Math.max(0, newPercentage)));
-    // In a real app, this would calculate the amount based on available balance
-  };
-  
-  const handleSliderClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const position = ((e.clientX - rect.left) / rect.width) * 100;
-    handlePercentageChange(Math.round(position));
+  // Get current pair information
+  const currentPair = localStorage.getItem('lastVisitedPair') || "ORANJ/USDC";
+  const [baseAsset, quoteAsset] = currentPair.split('/');
+
+  // Mock available balance - replace with actual balance from your state management
+  const availableBalance = 1000; // Example: 1000 USDC
+
+  const handleAmountChange = (newAmount: string) => {
+    setAmount(newAmount);
+    const numericAmount = parseFloat(newAmount);
+    if (!isNaN(numericAmount) && availableBalance > 0) {
+      setPercentage((numericAmount / availableBalance) * 100);
+    } else if (newAmount === '') {
+      setPercentage(0);
+    }
   };
 
+  const handleSliderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newPercentage = parseInt(event.target.value, 10);
+    setPercentage(newPercentage);
+    if (availableBalance > 0) {
+      setAmount(((newPercentage / 100) * availableBalance).toFixed(2));
+    } else {
+      setAmount('0.00');
+    }
+  };
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (onSubmit) {
-      onSubmit({
-        type: orderType,
-        amount: parseFloat(amount) || 0,
-        price: 'market', // For market orders
-      });
-    }
+    if (!onSubmit || !amount) return;
+
+    const size = parseFloat(amount) * (orderType === 'buy' ? 1 : -1);
+    const entryPrice = marketPrice || 0; // Use marketPrice prop, fallback to 0
+
+    // Create a new position object with the required fields
+    const newPosition: Position = {
+      asset: baseAsset, // Use baseAsset from currentPair
+      pairName: currentPair, // Add the currentPair as pairName
+      size,
+      entryPrice,
+      markPrice: entryPrice, // For simplicity, markPrice = entryPrice initially
+      pnl: 0,
+      pnlPercent: 0,
+    };
+
+    onSubmit(newPosition);
+    setAmount(''); // Reset amount after submission
+    setPercentage(0); // Reset percentage after submission
   };
 
   return (
@@ -315,7 +317,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit }) => {
 
         <FlexRow>
           <Label>Available to Trade</Label>
-          <Value>0.00 USDC</Value>
+          <Value>{availableBalance.toFixed(2)} {quoteAsset}</Value>
         </FlexRow>
 
         <FormGroup>
@@ -323,7 +325,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit }) => {
             <Label>Size</Label>
             <DropdownContainer>
               <SelectStyled>
-                ORANJ
+                {baseAsset}
                 <ChevronIcon>▼</ChevronIcon>
               </SelectStyled>
             </DropdownContainer>
@@ -332,39 +334,20 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit }) => {
             type="number" 
             placeholder="0.00" 
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => handleAmountChange(e.target.value)}
           />
         </FormGroup>
 
-        <SliderContainer>
+        <FormGroup>
+          <PercentageDisplay>{percentage.toFixed(0)}%</PercentageDisplay>
           <SliderInput 
-            type="range"
-            min="0"
-            max="100"
-            value={percentage}
-            onChange={(e) => handlePercentageChange(parseInt(e.target.value))}
+            type="range" 
+            min="0" 
+            max="100" 
+            value={percentage} 
+            onChange={handleSliderChange} 
           />
-          <SliderTicks>
-            <SliderTick />
-            <SliderTick />
-            <SliderTick />
-            <SliderTick />
-            <SliderTick />
-          </SliderTicks>
-          <FlexRow>
-            <div></div>
-            <div>
-              <PercentageInput 
-                type="number" 
-                value={percentage} 
-                onChange={(e) => handlePercentageChange(parseInt(e.target.value) || 0)}
-                min="0"
-                max="100"
-              />
-              <span> %</span>
-            </div>
-          </FlexRow>
-        </SliderContainer>
+        </FormGroup>
 
         <PlaceOrderButton type="submit">
           Place Order

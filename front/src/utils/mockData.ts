@@ -1,4 +1,5 @@
 import type { Order, OrderbookState } from '../types/orderbook';
+import { MOCK_ASSETS, DEFAULT_PAIR_ID } from '../constants/assets'; // Import MOCK_ASSETS
 
 // Data structure for candlestick data
 export interface CandleData {
@@ -16,6 +17,9 @@ export interface MockTradingData {
   historicalData: CandleData[];
   currentOrderbook: OrderbookState;
   currentPrice: number; // Derived from the orderbook or last trade
+  volume24h: number; // 24 hour trading volume in quote asset
+  marketCap: number; // Market capitalization in quote asset
+  contractAddress?: string; // Contract address of the base asset
 }
 
 const DEFAULT_STARTING_PRICE = 100;
@@ -156,17 +160,26 @@ const generateOrderbookFromPrice = (centerPrice: number): OrderbookState => {
 
 /**
  * Generates a complete set of mock trading data.
- * @param assetPair The asset pair string, e.g., "HYPE/USDC".
+ * @param assetPairId The asset pair string, e.g., "HYPE/USDC".
  * @param historicalCandleCount Number of historical candles.
  * @param candlePeriodSeconds Period for each candle.
  * @param initialPrice Approximate starting price for the simulation.
  */
 export const generateMockTradingData = (
-  assetPair: string = "HYPE/USDC",
+  assetPairId: string = DEFAULT_PAIR_ID, // Changed parameter name for clarity
   historicalCandleCount: number = 200,
   candlePeriodSeconds: number = 3600, // 1-hour candles
-  initialPrice: number = DEFAULT_STARTING_PRICE
-): MockTradingData => {
+  // initialPrice is now determined from MOCK_ASSETS
+): MockTradingData | null => { // Return type can be null if asset not found
+  const assetInfo = MOCK_ASSETS.find(asset => asset.id === assetPairId);
+
+  if (!assetInfo) {
+    console.error(`Asset with ID ${assetPairId} not found in MOCK_ASSETS.`);
+    return null; // Or handle this error appropriately
+  }
+
+  const initialPrice = assetInfo.defaultPrice;
+
   const historicalData = generateHistoricalCandles(
     historicalCandleCount,
     candlePeriodSeconds,
@@ -178,12 +191,27 @@ export const generateMockTradingData = (
 
   const currentOrderbook = generateOrderbookFromPrice(currentCenterPrice);
   
-  const currentPrice = currentOrderbook.bids.length > 0 ? currentOrderbook.bids[0].price : currentCenterPrice;
+  const currentPrice = currentOrderbook.bids.length > 0 && currentOrderbook.bids[0].price > 0 
+    ? currentOrderbook.bids[0].price 
+    : (currentOrderbook.asks.length > 0 && currentOrderbook.asks[0].price > 0 
+      ? currentOrderbook.asks[0].price 
+      : currentCenterPrice);
+
+  // Generate dynamic volume and market cap
+  // These are simplified random generations. In a real app, these would come from an API.
+  const baseVolume = (Math.random() * 1000000) + 500000; // Base volume between 500k and 1.5M
+  const volume24h = baseVolume * currentPrice; // Volume in quote currency
+
+  const baseMarketCap = (Math.random() * 50000000) + 10000000; // Base market cap between 10M and 60M (circulating supply * price)
+  const marketCap = baseMarketCap * currentPrice; // Market cap in quote currency
 
   return {
-    assetPair,
+    assetPair: assetInfo.id, // Use the ID from assetInfo
     historicalData,
     currentOrderbook,
     currentPrice,
+    volume24h,
+    marketCap,
+    contractAddress: assetInfo.contractAddress,
   };
 }; 

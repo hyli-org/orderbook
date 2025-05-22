@@ -30,11 +30,12 @@ export interface OrderbookRowProps {
   order: Order;
   type: 'bid' | 'ask';
   maxTotal?: number; // For depth visualization
-  // TODO: Define other props
+  onClick?: (order: Order, type: 'bid' | 'ask') => void;
+  precision?: number;
 }
 
 export interface OrderbookSpreadProps {
   spread: number;
   spreadPercentage: number;
-  // TODO: Define props
+  precision?: number;
 } 

@@ -1,8 +1,8 @@
 import React from 'react';
 import './MarketInfoBanner.css';
+import { MarketSelector } from '../MarketSelector';
 
 interface MarketInfoBannerProps {
-  pair: string;
   price: string;
   change: {
     value: string;
@@ -15,7 +15,6 @@ interface MarketInfoBannerProps {
 }
 
 export const MarketInfoBanner: React.FC<MarketInfoBannerProps> = ({
-  pair,
   price,
   change,
   volume,
@@ -24,9 +23,8 @@ export const MarketInfoBanner: React.FC<MarketInfoBannerProps> = ({
 }) => {
   return (
     <div className="market-info-banner">
-      <div className="pair-selector">
-        <span className="pair-name">{pair}</span>
-        <span className="dropdown-icon">▼</span>
+      <div className="pair-selector-container">
+        <MarketSelector />
       </div>
       
       <div className="market-data-item">
@@ -43,7 +41,7 @@ export const MarketInfoBanner: React.FC<MarketInfoBannerProps> = ({
         <div className="data-label">24h Volume</div>
         <div className="data-value">{volume}</div>
       </div>
-      
+    
       <div className="market-data-item">
         <div className="data-label">Market Cap</div>
         <div className="data-value">{marketCap}</div>
