@@ -168,7 +168,7 @@ impl Orderbook {
         let user_balance = self.get_balance(&user, &required_token);
 
         Ok(vec![
-            OrderbookEvent::OrderCancelled { order_id },
+            OrderbookEvent::OrderCancelled { order_id, pair: order.pair },
             OrderbookEvent::BalanceUpdated {
                 user,
                 token: required_token.to_string(),
@@ -293,6 +293,7 @@ impl Orderbook {
                             events.push(OrderbookEvent::OrderUpdate {
                                 order_id: existing_order.order_id.clone(),
                                 remaining_quantity: existing_order.quantity,
+                                pair: order.pair.clone()
                             });
 
                             // Send token to the order owner
@@ -315,9 +316,11 @@ impl Orderbook {
                             // The two orders are executed
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: order_id.clone(),
+                                pair: order.pair.clone()
                             });
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: order.order_id.clone(),
+                                pair: order.pair.clone()
                             });
 
                             // Send token to the order owner
@@ -343,6 +346,7 @@ impl Orderbook {
                             // The existing order is fully filled
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: existing_order.order_id.clone(),
+                                pair: order.pair.clone()
                             });
                             transfers_to_process.push((
                                 user.clone(),
@@ -436,6 +440,7 @@ impl Orderbook {
                             events.push(OrderbookEvent::OrderUpdate {
                                 order_id: existing_order.order_id.clone(),
                                 remaining_quantity: existing_order.quantity,
+                                pair: order.pair.clone()
                             });
 
                             // Send token to the order owner
@@ -458,6 +463,7 @@ impl Orderbook {
                             // The existing order fully covers this order
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: existing_order.order_id.clone(),
+                                pair: order.pair.clone()
                             });
                             // Send token to the order owner
                             transfers_to_process.push((
@@ -480,6 +486,7 @@ impl Orderbook {
                             // The existing order is fully filled
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: existing_order.order_id.clone(),
+                                pair: order.pair.clone()
                             });
                             transfers_to_process.push((
                                 user.clone(),
@@ -756,13 +763,16 @@ pub enum OrderbookEvent {
     },
     OrderCancelled {
         order_id: String,
+        pair: TokenPair,
     },
     OrderExecuted {
         order_id: String,
+        pair: TokenPair,
     },
     OrderUpdate {
         order_id: String,
         remaining_quantity: u32,
+        pair: TokenPair,
     },
     BalanceUpdated {
         user: String,
@@ -1268,7 +1278,8 @@ mod tests {
         assert!(events.iter().any(|event| matches!(event,
             OrderbookEvent::OrderUpdate {
                 order_id,
-                remaining_quantity
+                remaining_quantity,
+                pair: _
             } if order_id == "sell1" && *remaining_quantity == 1
         )));
 
@@ -1327,7 +1338,8 @@ mod tests {
         assert!(events.iter().any(|event| matches!(event,
             OrderbookEvent::OrderUpdate {
                 order_id,
-                remaining_quantity
+                remaining_quantity,
+                pair: _
             } if order_id == "sell1" && *remaining_quantity == 1
         )));
 
@@ -1385,7 +1397,8 @@ mod tests {
         // Order should be executed immediately at the buy order's price
         assert!(events.iter().any(|event| matches!(event, OrderbookEvent::OrderUpdate { 
             order_id,
-            remaining_quantity 
+            remaining_quantity,
+            pair: _
         } if order_id == "buy1" && *remaining_quantity == 1)));
 
         // Check balances were updated correctly
@@ -1558,7 +1571,8 @@ mod tests {
         // Order should be executed immediately at the sell order's price
         assert!(events.iter().any(|event| matches!(event, OrderbookEvent::OrderUpdate { 
             order_id,
-            remaining_quantity 
+            remaining_quantity,
+            pair: _
         } if order_id == "sell1" && *remaining_quantity == 1)));
 
         // Check balances were updated correctly
