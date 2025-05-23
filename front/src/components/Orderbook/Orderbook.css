@@ -1,0 +1,9 @@
+.buy-orders-container,
+.sell-orders-container {
+  width: 100%;
+}
+
+.sell-orders-container {
+  display: flex;
+  flex-direction: column;
+}

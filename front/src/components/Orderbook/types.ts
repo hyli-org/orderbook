@@ -1,16 +1,17 @@
-import type { Order } from '../../types/orderbook';
+import type { Order, OrderbookState } from '../../types/orderbook';
 
-export type OrderbookFocus = 'all' | 'bids' | 'asks';
+export type OrderbookFocus = 'all' | 'buy' | 'sell';
 
 export interface OrderbookProps {
   // Data
-  bids?: Order[];
-  asks?: Order[];
+  buyOrders?: Order[];
+  sellOrders?: Order[];
+  rawOrderbook?: OrderbookState;
 
   // Configuration
   precision?: number;
   grouping?: number;
-  focus?: OrderbookFocus; // Allow initial focus to be set
+  focus?: OrderbookFocus;
 
   // Display options
   showHeader?: boolean;
@@ -18,8 +19,8 @@ export interface OrderbookProps {
   maxRows?: number;
 
   // Callbacks
-  onOrderClick?: (order: Order, type: 'bid' | 'ask') => void;
-  onFocusChange?: (focus: OrderbookFocus) => void; // Callback for focus change
+  onOrderClick?: (order: Order) => void;
+  onFocusChange?: (focus: OrderbookFocus) => void;
 }
 
 export interface OrderbookHeaderProps {
@@ -28,9 +29,8 @@ export interface OrderbookHeaderProps {
 
 export interface OrderbookRowProps {
   order: Order;
-  type: 'bid' | 'ask';
   maxTotal?: number; // For depth visualization
-  onClick?: (order: Order, type: 'bid' | 'ask') => void;
+  onClick?: (order: Order) => void;
   precision?: number;
 }
 
@@ -38,4 +38,4 @@ export interface OrderbookSpreadProps {
   spread: number;
   spreadPercentage: number;
   precision?: number;
-} 
+}

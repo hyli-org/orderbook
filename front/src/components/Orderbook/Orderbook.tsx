@@ -2,54 +2,93 @@ import React, { useMemo } from 'react';
 import { OrderbookHeader } from './OrderbookHeader';
 import { OrderbookRow } from './OrderbookRow';
 import { OrderbookSpread } from './OrderbookSpread';
-import { useOrderbookState } from '../../hooks/useOrderbookState';
 import type { Order } from '../../types/orderbook';
 import type { OrderbookProps } from './types';
 
-export const Orderbook: React.FC<Omit<OrderbookProps, 'bids' | 'asks' | 'focus' | 'onFocusChange'>> = ({
+export const Orderbook: React.FC<OrderbookProps> = ({
+  buyOrders: initialBuyOrders = [],
+  sellOrders: initialSellOrders = [],
   showHeader = true,
   showSpread = true,
   maxRows = 10,
   precision = 5,
-  grouping = 1,
   onOrderClick,
+  rawOrderbook
 }) => {
-  const { orderbook, focus, setFocus } = useOrderbookState();
-  const { bids, asks, spread, spreadPercentage } = orderbook;
-
-  const getProcessedOrders = (orders: Order[], isAsks: boolean, count: number): Order[] => {
-    let processed = isAsks ? orders.slice(0, count) : orders.slice(0, count);
-    if (isAsks) {
-      processed = processed.reverse();
+  // Transform the raw orderbook state into buy and sell arrays
+  const { processedBuyOrders, processedSellOrders, spread, spreadPercentage } = useMemo(() => {
+    if (!rawOrderbook || !rawOrderbook.buy_orders || !rawOrderbook.sell_orders || !rawOrderbook.orders) {
+      return {
+        processedBuyOrders: initialBuyOrders,
+        processedSellOrders: initialSellOrders,
+        spread: 0,
+        spreadPercentage: 0
+      };
     }
-    return processed;
-  };
 
-  const displayedAsks = useMemo(() => getProcessedOrders(asks, true, maxRows), [asks, maxRows, grouping]);
-  const displayedBids = useMemo(() => getProcessedOrders(bids, false, maxRows), [bids, maxRows, grouping]);
+    const buyOrders: Order[] = [];
+    const sellOrders: Order[] = [];
 
-  const maxAskTotal = displayedAsks.length > 0 ? Math.max(...displayedAsks.map(ask => ask.total)) : 0;
-  const maxBidTotal = displayedBids.length > 0 ? Math.max(...displayedBids.map(bid => bid.total)) : 0;
-  const maxTotal = Math.max(maxAskTotal, maxBidTotal);
+    // Get the first pair's orders if they exist
+    const buyOrderIds = Object.values(rawOrderbook.buy_orders)[0] || [];
+    const sellOrderIds = Object.values(rawOrderbook.sell_orders)[0] || [];
+
+    // Process buy orders
+    if (Array.isArray(buyOrderIds)) {
+      buyOrderIds.forEach(orderId => {
+        const order = rawOrderbook.orders[orderId];
+        if (order) {
+          buyOrders.push(order);
+        }
+      });
+    }
+
+    // Process sell orders
+    if (Array.isArray(sellOrderIds)) {
+      sellOrderIds.forEach(orderId => {
+        const order = rawOrderbook.orders[orderId];
+        if (order) {
+          sellOrders.push(order);
+        }
+      });
+    }
+
+    // Sort buy orders (highest price first) and sell orders (lowest price first)
+    buyOrders.sort((a, b) => (b.price || 0) - (a.price || 0));
+    sellOrders.sort((a, b) => (a.price || 0) - (b.price || 0));
+
+    // Calculate spread
+    const highestBuyPrice = buyOrders[0]?.price || 0;
+    const lowestSellPrice = sellOrders[0]?.price || 0;
+    const spread = Math.max(0, lowestSellPrice - highestBuyPrice);
+    const spreadPercentage = highestBuyPrice > 0 ? (spread / highestBuyPrice) * 100 : 0;
+
+    return {
+      processedBuyOrders: buyOrders.slice(0, maxRows),
+      processedSellOrders: sellOrders.slice(0, maxRows),
+      spread,
+      spreadPercentage
+    };
+  }, [rawOrderbook, initialBuyOrders, initialSellOrders, maxRows]);
+
+  // Calculate max total for depth visualization
+  const maxTotal = Math.max(
+    ...processedSellOrders.map(o => (o.price || 0) * o.quantity),
+    ...processedBuyOrders.map(o => (o.price || 0) * o.quantity),
+    0 // Ensure we always have a non-negative value even if there are no orders
+  );
 
   return (
-    <div className="orderbook-container">
-      {showHeader && (
-        <OrderbookHeader
-          currentFocus={focus}
-          onFocusChange={setFocus}
-        />
-      )}
-      
+    <div>
+      {showHeader && <OrderbookHeader />}
       <div className="orderbook-content">
-        <div className="asks-container">
-          {displayedAsks.map((order) => (
+        <div className="sell-orders-container">
+          {processedSellOrders.map((order) => (
             <OrderbookRow
-              key={`${order.price}-${order.size}-ask`}
+              key={order.order_id}
               order={order}
-              type="ask"
               maxTotal={maxTotal}
-              onClick={onOrderClick ? () => onOrderClick(order, 'ask') : undefined}
+              onClick={onOrderClick}
               precision={precision}
             />
           ))}
@@ -63,14 +102,13 @@ export const Orderbook: React.FC<Omit<OrderbookProps, 'bids' | 'asks' | 'focus' 
           />
         )}
         
-        <div className="bids-container">
-          {displayedBids.map((order) => (
+        <div className="buy-orders-container">
+          {processedBuyOrders.map((order) => (
             <OrderbookRow
-              key={`${order.price}-${order.size}-bid`}
+              key={order.order_id}
               order={order}
-              type="bid"
               maxTotal={maxTotal}
-              onClick={onOrderClick ? () => onOrderClick(order, 'bid') : undefined}
+              onClick={onOrderClick}
               precision={precision}
             />
           ))}
