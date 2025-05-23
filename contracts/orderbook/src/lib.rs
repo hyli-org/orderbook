@@ -2,7 +2,7 @@ use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sdk::{hyle_model_utils::TimestampMs, tracing, Identity, RunResult};
+use sdk::{hyle_model_utils::TimestampMs, tracing, Identity, RunResult, ValidatorPublicKey};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -20,6 +20,10 @@ impl sdk::ZkContract for Orderbook {
         let Some(tx_ctx) = &calldata.tx_ctx else {
             return Err("tx_ctx is missing".to_string());
         };
+
+        if tx_ctx.lane_id != sdk::LaneId(ValidatorPublicKey::default()) {
+            return Err("Invalid lane id".to_string());
+        }
 
         // Execute the given action
         let events = match action {

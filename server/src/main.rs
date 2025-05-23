@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage};
 use axum::Router;
 use clap::Parser;
-use client_sdk::rest_client::{IndexerApiHttpClient, NodeApiHttpClient};
+use client_sdk::rest_client::{IndexerApiHttpClient, NodeApiClient, NodeApiHttpClient};
 use conf::Conf;
 use contracts::ORDERBOOK_ELF;
 use hyle_modules::{
@@ -65,6 +65,11 @@ async fn main() -> Result<()> {
     info!("Building Proving Key");
     let prover = client_sdk::helpers::sp1::SP1Prover::new(pk).await;
 
+    let Some(validator_lane_id) = node_client.get_node_info().await?.pubkey else {
+        error!("Validator lane id not found");
+        return Ok(());
+    };
+
     let contracts = vec![init::ContractInit {
         name: args.orderbook_cn.clone().into(),
         program_id: prover.program_id().expect("getting program id").0,
@@ -93,7 +98,7 @@ async fn main() -> Result<()> {
         api: api_ctx.clone(),
         node_client,
         orderbook_cn: args.orderbook_cn.clone().into(),
-        validator_lane_id: config.validator_lane_id.clone(),
+        validator_lane_id,
     });
     let start_height = orderbook_ctx.node_client.get_block_height().await?;
 
