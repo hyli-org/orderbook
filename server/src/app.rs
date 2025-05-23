@@ -94,12 +94,11 @@ impl Module for OrderbookModule {
     async fn run(&mut self) -> Result<()> {
         module_handle_messages! {
             on_bus self.bus,
-            // listen<WsInMessage<OrderbookWsInMessage>> msg => {
-            //     self.handle_ws_message(msg).await?;
-            // }
+
             listen<MempoolStatusEvent> event => {
                 self.handle_mempool_status_event(event).await?;
             }
+
         };
 
         Ok(())
@@ -157,7 +156,7 @@ impl OrderbookModule {
                     match &event {
                         OrderbookEvent::BalanceUpdated { user, .. } => {
                             self.bus.send(WsTopicMessage {
-                                topic: user.0.clone(),
+                                topic: user.clone(),
                                 message: event_clone,
                             })?;
                         }

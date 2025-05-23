@@ -2,7 +2,7 @@ use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sdk::{hyle_model_utils::TimestampMs, tracing, Identity, RunResult, ValidatorPublicKey};
+use sdk::{hyle_model_utils::TimestampMs, RunResult, ValidatorPublicKey};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -15,7 +15,7 @@ impl sdk::ZkContract for Orderbook {
         // Parse contract inputs
         let (action, ctx) = sdk::utils::parse_raw_calldata::<OrderbookAction>(calldata)?;
 
-        let user = calldata.identity.clone();
+        let user = calldata.identity.0.clone();
 
         let Some(tx_ctx) = &calldata.tx_ctx else {
             return Err("tx_ctx is missing".to_string());
@@ -73,7 +73,7 @@ impl Orderbook {
         &mut self,
         token: String,
         amount: u32,
-        user: Identity,
+        user: String,
     ) -> Result<Vec<OrderbookEvent>, String> {
         let user_balances = self
             .balances
@@ -93,7 +93,7 @@ impl Orderbook {
         &mut self,
         token: String,
         amount: u32,
-        user: Identity,
+        user: String,
     ) -> Result<Vec<OrderbookEvent>, String> {
         let user_balances = self
             .balances
@@ -119,7 +119,7 @@ impl Orderbook {
     pub fn cancel_order(
         &mut self,
         order_id: String,
-        user: Identity,
+        user: String,
     ) -> Result<Vec<OrderbookEvent>, String> {
         let order = self
             .orders
@@ -142,7 +142,7 @@ impl Orderbook {
 
         // Refund the reserved amount to the user
         self.transfer_tokens(
-            &"orderbook".to_string().into(),
+            "orderbook",
             &user,
             &required_token,
             order.quantity,
@@ -182,7 +182,7 @@ impl Orderbook {
 
         // Check if user has enough balance for the order
         let user = order.owner.clone();
-        let mut transfers_to_process: Vec<(Identity, Identity, String, u32)> = vec![];
+        let mut transfers_to_process: Vec<(String, String, String, u32)> = vec![];
         let mut order_to_insert: Option<Order> = None;
 
 
@@ -236,7 +236,7 @@ impl Orderbook {
                         token: required_token.clone(),
                         amount: user_balance - order.quantity * order.price.unwrap(),
                     });
-                    let orderbook_balance = self.get_balance(&"orderbook".into(), &required_token);
+                    let orderbook_balance = self.get_balance("orderbook", &required_token);
                     events.push(OrderbookEvent::BalanceUpdated {
                         user: "orderbook".into(),
                         token: required_token.clone(),
@@ -244,7 +244,7 @@ impl Orderbook {
                     });
                     self.transfer_tokens(
                         &user,
-                        &"orderbook".to_string().into(),
+                        "orderbook",
                         &required_token,
                         order.quantity * order.price.unwrap(),
                     )?;
@@ -304,7 +304,7 @@ impl Orderbook {
                             ));
                             // Send token to the user
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.0.clone(),
                                 order.quantity,
@@ -330,7 +330,7 @@ impl Orderbook {
 
                             // Send token to the user
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.0.clone(),
                                 existing_order.quantity,
@@ -351,7 +351,7 @@ impl Orderbook {
                                 existing_order.price.unwrap() * existing_order.quantity,
                             ));
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.0.clone(),
                                 existing_order.quantity,
@@ -387,7 +387,7 @@ impl Orderbook {
                         token: required_token.clone(),
                         amount: user_balance - order.quantity,
                     });
-                    let orderbook_balance = self.get_balance(&"orderbook".into(), &required_token);
+                    let orderbook_balance = self.get_balance("orderbook", &required_token);
                     events.push(OrderbookEvent::BalanceUpdated {
                         user: "orderbook".into(),
                         token: required_token.clone(),
@@ -395,7 +395,7 @@ impl Orderbook {
                     });
                     self.transfer_tokens(
                         &user,
-                        &"orderbook".to_string().into(),
+                        "orderbook",
                         &required_token,
                         order.quantity,
                     )?;
@@ -428,7 +428,6 @@ impl Orderbook {
 
                     match existing_order.quantity.cmp(&order.quantity) {
                         std::cmp::Ordering::Greater => {
-                            tracing::error!("Greater");
                             // The existing order do not fully cover this order
                             existing_order.quantity -= order.quantity;
 
@@ -448,7 +447,7 @@ impl Orderbook {
                             ));
                             // Send token to the user
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.1.clone(),
                                 existing_order.price.unwrap() * order.quantity,
@@ -456,7 +455,6 @@ impl Orderbook {
                             break;
                         }
                         std::cmp::Ordering::Equal => {
-                            tracing::error!("Equal");
                             // The existing order fully covers this order
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: existing_order.order_id.clone(),
@@ -469,7 +467,7 @@ impl Orderbook {
                                 existing_order.quantity,
                             ));
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.1.clone(),
                                 existing_order.price.unwrap() * existing_order.quantity,
@@ -479,7 +477,6 @@ impl Orderbook {
                             break;
                         }
                         std::cmp::Ordering::Less => {
-                            tracing::error!("Less");
                             // The existing order is fully filled
                             events.push(OrderbookEvent::OrderExecuted {
                                 order_id: existing_order.order_id.clone(),
@@ -491,7 +488,7 @@ impl Orderbook {
                                 existing_order.quantity,
                             ));
                             transfers_to_process.push((
-                                "orderbook".to_string().into(),
+                                "orderbook".to_string(),
                                 user.clone(),
                                 order.pair.1.clone(),
                                 existing_order.price.unwrap() * existing_order.quantity,
@@ -521,7 +518,7 @@ impl Orderbook {
 
                 transfers_to_process.push((
                     user.clone(),
-                    "orderbook".to_string().into(),
+                    "orderbook".to_string(),
                     required_token,
                     quantity,
                 ));
@@ -531,7 +528,7 @@ impl Orderbook {
 
         // Updating balances
         // If not limit order: assert that total balance in user_to_fund is equal to the order quantity
-        let mut ids = HashMap::<String, HashSet<Identity>>::new();
+        let mut ids = HashMap::<String, HashSet<String>>::new();
         for (from, to, token, amout) in transfers_to_process {
             self.transfer_tokens(&from, &to, &token, amout)?;
             let t = ids.entry(token.clone()).or_default();
@@ -556,7 +553,7 @@ impl Orderbook {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
 pub struct Orderbook {
     // Map of user address to token balances
-    balances: HashMap<Identity, HashMap<String, u32>>,
+    balances: HashMap<String, HashMap<String, u32>>,
     // All orders indexed by order_id
     orders: HashMap<String, Order>,
     // Buy orders sorted by price (highest first) for each token pair
@@ -568,8 +565,8 @@ pub struct Orderbook {
 impl Orderbook {
     fn transfer_tokens(
         &mut self,
-        from: &Identity,
-        to: &Identity,
+        from: &str,
+        to: &str,
         token: &str,
         amount: u32,
     ) -> Result<(), String> {
@@ -590,17 +587,17 @@ impl Orderbook {
         *from_balance -= amount;
 
         // Add to receiver
-        let to_balances = self.balances.entry(to.clone()).or_default();
+        let to_balances = self.balances.entry(to.to_string()).or_default();
         let to_balance = to_balances.entry(token.to_string()).or_default();
         *to_balance += amount;
 
         Ok(())
     }
 
-    pub fn get_balance(&mut self, user: &Identity, token: &str) -> u32 {
+    pub fn get_balance(&mut self, user: &str, token: &str) -> u32 {
         *self
             .balances
-            .entry(user.clone())
+            .entry(user.to_string())
             .or_default()
             .entry(token.to_owned())
             .or_default()
@@ -641,8 +638,65 @@ impl Orderbook {
 
 impl Default for Orderbook {
     fn default() -> Self {
+        let user1 = "Alice".to_string();
+        let user2 = "Bob".to_string();
+
         let mut balances = HashMap::new();
-        balances.insert(Identity("orderbook".to_string()), HashMap::new());
+        balances.insert(user1.clone(), HashMap::from([
+            ("ORANJ".to_string(), 5),
+            ("USDC".to_string(), 20),
+        ]));
+        balances.insert(user2.clone(), HashMap::from([
+            ("ORANJ".to_string(), 10),
+            ("USDC".to_string(), 10),
+        ]));
+
+        let pair = ("ORANJ".to_string(), "USDC".to_string());
+        let now = TimestampMs(1);
+
+        let order1 = Order {
+            owner: user1.clone(),
+            order_id: "order1".to_string(),
+            order_type: OrderType::Buy,
+            price: Some(10),
+            pair: pair.clone(),
+            quantity: 2,
+            timestamp: now,
+        };
+
+        let order2 = Order {
+            owner: user2.clone(),
+            order_id: "order2".to_string(),
+            order_type: OrderType::Sell,
+            price: Some(12),
+            pair: pair.clone(),
+            quantity: 3,
+            timestamp: TimestampMs(2),
+        };
+
+        let mut orders = HashMap::new();
+        orders.insert(order1.order_id.clone(), order1.clone());
+        orders.insert(order2.order_id.clone(), order2.clone());
+
+        let mut buy_orders = HashMap::new();
+        buy_orders.insert(pair.clone(), VecDeque::from(vec![order1.order_id.clone()]));
+
+        let mut sell_orders = HashMap::new();
+        sell_orders.insert(pair.clone(), VecDeque::from(vec![order2.order_id.clone()]));
+
+        Orderbook {
+            balances,
+            orders,
+            buy_orders,
+            sell_orders,
+        }
+    }
+}
+
+impl Orderbook {
+    pub fn init_with_fake_data() -> Self {
+        let mut balances = HashMap::new();
+        balances.insert("orderbook".to_string(), HashMap::new());
 
         Orderbook {
             balances,
@@ -678,7 +732,7 @@ pub enum OrderbookAction {
 
 #[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize)]
 pub struct Order {
-    pub owner: Identity,
+    pub owner: String,
     pub order_id: String,
     pub order_type: OrderType,
     pub price: Option<u32>,
@@ -693,20 +747,7 @@ pub enum OrderType {
     Sell,
 }
 
-#[derive(
-    Debug,
-    Serialize,
-    Deserialize,
-    Clone,
-    BorshSerialize,
-    BorshDeserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-)]
-pub struct TokenPair(String, String);
+pub type TokenPair = (String, String);
 
 #[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize)]
 pub enum OrderbookEvent {
@@ -724,7 +765,7 @@ pub enum OrderbookEvent {
         remaining_quantity: u32,
     },
     BalanceUpdated {
-        user: Identity,
+        user: String,
         token: String,
         amount: u32,
     },
@@ -750,13 +791,12 @@ impl From<sdk::StateCommitment> for Orderbook {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use sdk::Identity;
     use std::collections::HashMap;
 
-    fn setup() -> (Identity, Identity, Orderbook) {
-        let mut orderbook = Orderbook::default();
-        let eth_user = Identity("eth_user".to_string());
-        let usd_user = Identity("usd_user".to_string());
+    fn setup() -> (String, String, Orderbook) {
+        let mut orderbook = Orderbook::init_with_fake_data();
+        let eth_user = "eth_user".to_string();
+        let usd_user = "usd_user".to_string();
 
         let mut eth_token = HashMap::new();
         eth_token.insert("ETH".to_string(), 10);
@@ -780,7 +820,7 @@ mod tests {
             order_id: "order1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -804,7 +844,7 @@ mod tests {
         assert!(orderbook.orders.contains_key("order1"));
         assert!(orderbook
             .sell_orders
-            .get(&TokenPair("ETH".to_string(), "USD".to_string()))
+            .get(&("ETH".to_string(), "USD".to_string()))
             .unwrap()
             .contains(&"order1".to_string()));
     }
@@ -819,7 +859,7 @@ mod tests {
             order_id: "order1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -843,7 +883,7 @@ mod tests {
         assert!(orderbook.orders.contains_key("order1"));
         assert!(orderbook
             .buy_orders
-            .get(&TokenPair("ETH".to_string(), "USD".to_string()))
+            .get(&("ETH".to_string(), "USD".to_string()))
             .unwrap()
             .contains(&"order1".to_string()));
     }
@@ -858,7 +898,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -870,7 +910,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -922,7 +962,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -934,7 +974,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(1900),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -998,7 +1038,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Buy,
             price: Some(1900),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1010,7 +1050,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1074,7 +1114,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1086,7 +1126,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2100),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1131,7 +1171,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(1000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1143,7 +1183,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(1000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(1),
         };
@@ -1182,7 +1222,7 @@ mod tests {
         let usd_user_balances = orderbook.balances.get(&usd_user).unwrap();
         let orderbook_balances = orderbook
             .balances
-            .get(&"orderbook".to_string().into())
+            .get("orderbook")
             .unwrap();
 
         assert_eq!(*eth_user_balances.get("USD").unwrap(), 1000);
@@ -1205,7 +1245,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(0),
         };
@@ -1217,7 +1257,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1264,7 +1304,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(0),
         };
@@ -1276,7 +1316,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2100),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1323,7 +1363,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(1000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(0),
         };
@@ -1335,7 +1375,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1366,7 +1406,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1378,7 +1418,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1408,7 +1448,7 @@ mod tests {
         // Check that balances haven't changed
         let eth_user_balances = orderbook.balances.get(&eth_user).unwrap();
         let usd_user_balances = orderbook.balances.get(&usd_user).unwrap();
-        let orderbook_balances = orderbook.balances.get(&"orderbook".into()).unwrap();
+        let orderbook_balances = orderbook.balances.get("orderbook").unwrap();
 
         assert_eq!(*eth_user_balances.get("ETH").unwrap(), 9); // eth_user sold 1 ETH ...
         assert_eq!(*eth_user_balances.get("USD").unwrap(), 2000); // .. for 2000 USD
@@ -1430,7 +1470,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1443,7 +1483,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(1),
         };
@@ -1473,7 +1513,7 @@ mod tests {
         // Check that balances haven't changed
         let eth_user_balances = orderbook.balances.get(&eth_user).unwrap();
         let usd_user_balances = orderbook.balances.get(&usd_user).unwrap();
-        let orderbook_balances = orderbook.balances.get(&"orderbook".into()).unwrap();
+        let orderbook_balances = orderbook.balances.get("orderbook").unwrap();
 
         assert_eq!(*eth_user_balances.get("ETH").unwrap(), 9); // eth_user sold 1 ETH ...
         assert_eq!(*eth_user_balances.get("USD").unwrap(), 2000); // .. for 2000 USD
@@ -1496,7 +1536,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(0),
         };
@@ -1508,7 +1548,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1539,7 +1579,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1551,7 +1591,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(1),
         };
@@ -1582,7 +1622,7 @@ mod tests {
             order_id: "sell1".to_string(),
             order_type: OrderType::Sell,
             price: Some(2000),
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 1,
             timestamp: TimestampMs(0),
         };
@@ -1594,7 +1634,7 @@ mod tests {
             order_id: "buy1".to_string(),
             order_type: OrderType::Buy,
             price: None, // Market order
-            pair: TokenPair("ETH".to_string(), "USD".to_string()),
+            pair: ("ETH".to_string(), "USD".to_string()),
             quantity: 2,
             timestamp: TimestampMs(1),
         };
@@ -1624,7 +1664,7 @@ mod tests {
         // Check that balances haven't changed
         let eth_user_balances = orderbook.balances.get(&eth_user).unwrap();
         let usd_user_balances = orderbook.balances.get(&usd_user).unwrap();
-        let orderbook_balances = orderbook.balances.get(&"orderbook".into()).unwrap();
+        let orderbook_balances = orderbook.balances.get("orderbook").unwrap();
 
         assert_eq!(*eth_user_balances.get("ETH").unwrap(), 9); // eth_user sold 1 ETH ...
         assert_eq!(*eth_user_balances.get("USD").unwrap(), 2000); // .. for 2000 USD

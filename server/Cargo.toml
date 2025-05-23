@@ -6,7 +6,6 @@ edition = "2021"
 sdk = { workspace = true, features = ["tracing"] }
 client-sdk = { workspace = true, features = ["sp1", "rest"] }
 hyle-modules = { workspace = true }
-hyle-net = { workspace = true }
 orderbook = { workspace = true, features = ["client"] }
 contracts = { workspace = true, features = [] }
 

@@ -4959,7 +4959,6 @@ dependencies = [
  "hyle-client-sdk",
  "hyle-contract-sdk",
  "hyle-modules",
- "hyle-net",
  "opentelemetry",
  "opentelemetry-prometheus",
  "opentelemetry_sdk",
