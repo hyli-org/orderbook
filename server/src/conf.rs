@@ -1,5 +1,6 @@
 use config::{Config, Environment, File};
 use hyle_modules::modules::websocket::WebSocketConfig;
+use sdk::ValidatorPublicKey;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -11,7 +12,10 @@ pub struct Conf {
     /// Directory name to store node state.
     pub data_directory: PathBuf,
     /// When running only the indexer, the address of the DA server to connect to
+    /// Warning: This NEEDS to be the Rollup node address
     pub da_read_from: String,
+    pub validator_lane_id: ValidatorPublicKey,
+
     pub node_url: String,
     pub indexer_url: String,
 

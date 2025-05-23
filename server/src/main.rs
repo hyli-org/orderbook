@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use app::{OrderbookModule, OrderbookModuleCtx, OrderbookOutWsEvent, OrderbookWsInMessage};
+use app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage};
 use axum::Router;
 use clap::Parser;
 use client_sdk::rest_client::{IndexerApiHttpClient, NodeApiHttpClient};
@@ -17,9 +17,10 @@ use hyle_modules::{
     },
     utils::logger::setup_tracing,
 };
-use orderbook::Orderbook;
+use orderbook::{Orderbook, OrderbookAction};
 use prometheus::Registry;
 use sdk::{api::NodeInfo, info, ZkContract};
+use sp1_sdk::{Prover, ProverClient};
 use std::sync::{Arc, Mutex};
 use tracing::error;
 
@@ -58,8 +59,11 @@ async fn main() -> Result<()> {
         IndexerApiHttpClient::new(config.indexer_url.clone()).context("build indexer client")?,
     );
 
+    let local_client = ProverClient::builder().mock().build();
+    let (pk, _) = local_client.setup(ORDERBOOK_ELF);
+
     info!("Building Proving Key");
-    let prover = client_sdk::helpers::sp1::SP1Prover::new(ORDERBOOK_ELF).await;
+    let prover = client_sdk::helpers::sp1::SP1Prover::new(pk).await;
 
     let contracts = vec![init::ContractInit {
         name: args.orderbook_cn.clone().into(),
@@ -89,6 +93,7 @@ async fn main() -> Result<()> {
         api: api_ctx.clone(),
         node_client,
         orderbook_cn: args.orderbook_cn.clone().into(),
+        validator_lane_id: config.validator_lane_id.clone(),
     });
     let start_height = orderbook_ctx.node_client.get_block_height().await?;
 
@@ -96,8 +101,10 @@ async fn main() -> Result<()> {
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
 
+    // Ajouter un matching
+
     handler
-        .build_module::<WebSocketModule<OrderbookWsInMessage, OrderbookOutWsEvent>>(
+        .build_module::<WebSocketModule<OrderbookWsInMessage, OrderbookAction>>(
             config.websocket.clone(),
         )
         .await?;
