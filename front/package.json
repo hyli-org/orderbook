@@ -16,6 +16,7 @@
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0",
     "styled-components": "^6.1.18",
+    "hyli": "^0.3.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

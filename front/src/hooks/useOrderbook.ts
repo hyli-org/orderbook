@@ -2,95 +2,130 @@ import type { Order, OrderbookState } from '../types/orderbook';
 import { useState, useMemo } from 'react';
 import type { OrderbookFocus } from '../components/Orderbook/types';
 
-export const generateMockOrder = (price: number, size: number): Order => ({
+export const generateMockOrder = (price: number, quantity: number, orderType: 'Buy' | 'Sell'): Order => ({
+  order_id: Math.random().toString(36).substring(7),
+  owner: 'mock_user',
+  order_type: orderType,
   price,
-  size,
-  total: price * size,
+  quantity,
+  pair: ['ORANJ', 'USDC'],
+  timestamp: Date.now()
 });
 
 export const generateMockOrderbook = (count: number = 10): OrderbookState => {
-  const bids: Order[] = [];
-  const asks: Order[] = [];
-  let lastBidPrice = 100;
-  let lastAskPrice = 101;
+  const orders: Record<string, Order> = {};
+  const buyOrders: Record<string, string[]> = {};
+  const sellOrders: Record<string, string[]> = {};
+  const pairKey = 'ORANJ,USDC';
 
+  buyOrders[pairKey] = [];
+  sellOrders[pairKey] = [];
+
+  let lastBuyPrice = 100;
+  let lastSellPrice = 101;
+
+  // Generate buy orders (highest to lowest price)
   for (let i = 0; i < count; i++) {
-    lastBidPrice -= Math.random() * 0.1 + 0.01; // ensure price changes
-    bids.push(generateMockOrder(parseFloat(lastBidPrice.toFixed(5)), Math.random() * 10));
-    lastAskPrice += Math.random() * 0.1 + 0.01; // ensure price changes
-    asks.push(generateMockOrder(parseFloat(lastAskPrice.toFixed(5)), Math.random() * 10));
+    lastBuyPrice *= (1 - Math.random() * 0.01);
+    const order = generateMockOrder(
+      parseFloat(lastBuyPrice.toFixed(5)), 
+      Math.random() * 10 + 1,
+      'Buy'
+    );
+    orders[order.order_id] = order;
+    buyOrders[pairKey].push(order.order_id);
   }
-  
-  const sortedBids = bids.sort((a, b) => b.price - a.price);
-  const sortedAsks = asks.sort((a, b) => a.price - b.price);
 
-  const spread = sortedAsks.length > 0 && sortedBids.length > 0 ? sortedAsks[0].price - sortedBids[0].price : 0;
-  const spreadPercentage = sortedBids.length > 0 && sortedBids[0].price > 0 ? (spread / sortedBids[0].price) * 100 : 0;
+  // Generate sell orders (lowest to highest price)
+  for (let i = 0; i < count; i++) {
+    lastSellPrice *= (1 + Math.random() * 0.01);
+    const order = generateMockOrder(
+      parseFloat(lastSellPrice.toFixed(5)), 
+      Math.random() * 10 + 1,
+      'Sell'
+    );
+    orders[order.order_id] = order;
+    sellOrders[pairKey].push(order.order_id);
+  }
 
   return {
-    bids: sortedBids,
-    asks: sortedAsks,
-    spread,
-    spreadPercentage,
+    orders,
+    buy_orders: buyOrders,
+    sell_orders: sellOrders,
+    balances: {}
   };
 };
 
-export type OrderbookSortField = 'price' | 'size' | 'total';
-export type OrderbookSortDirection = 'asc' | 'desc';
-
-
-export const useOrderbook = (initialBids?: Order[], initialAsks?: Order[], initialFocus: OrderbookFocus = 'all') => {
+export const useOrderbook = (initialBuyOrders?: Order[], initialSellOrders?: Order[], initialFocus: OrderbookFocus = 'all') => {
   const [focus, setFocusState] = useState<OrderbookFocus>(initialFocus);
-  // TODO: Implement sorting
-  // const [sortField, setSortField] = useState<OrderbookSortField>('price');
-  // const [sortDirection, setSortDirection] = useState<OrderbookSortDirection>('desc');
-  // TODO: Implement grouping
-  // const [grouping, setGrouping] = useState<number>(1);
-
 
   const baseOrderbook = useMemo(() => {
-    if (initialBids && initialAsks) {
-      // Ensure asks are sorted ascending and bids descending for correct spread calculation
-      const sortedAsks = [...initialAsks].sort((a,b) => a.price - b.price);
-      const sortedBids = [...initialBids].sort((a,b) => b.price - a.price);
-      const spread = sortedAsks.length > 0 && sortedBids.length > 0 && sortedAsks[0].price > sortedBids[0].price ? sortedAsks[0].price - sortedBids[0].price : 0;
-      const spreadPercentage = sortedBids.length > 0 && sortedBids[0].price > 0 ? (spread / sortedBids[0].price) * 100 : 0;
-      return { bids: sortedBids, asks: sortedAsks, spread, spreadPercentage};
+    if (!initialBuyOrders || !initialSellOrders) {
+      return generateMockOrderbook();
     }
-    return generateMockOrderbook();
-  }, [initialBids, initialAsks]);
 
-  const GHOST_ORDERBOOK_FOR_COMPILATION = generateMockOrderbook(); // This seems like a remnant, consider removing if not needed
+    // Convert arrays to OrderbookState format
+    const orders: Record<string, Order> = {};
+    const buyOrders: Record<string, string[]> = { 'ORANJ,USDC': [] };
+    const sellOrders: Record<string, string[]> = { 'ORANJ,USDC': [] };
 
-  const displayedBids = useMemo(() => {
-    if (focus === 'asks') return [];
-    // TODO: Apply sorting and grouping
-    return baseOrderbook.bids;
-  }, [baseOrderbook.bids, focus]);
+    initialBuyOrders.forEach(order => {
+      orders[order.order_id] = order;
+      buyOrders['ORANJ,USDC'].push(order.order_id);
+    });
 
-  const displayedAsks = useMemo(() => {
-    if (focus === 'bids') return [];
-    // TODO: Apply sorting and grouping
-    return baseOrderbook.asks;
-  }, [baseOrderbook.asks, focus]);
+    initialSellOrders.forEach(order => {
+      orders[order.order_id] = order;
+      sellOrders['ORANJ,USDC'].push(order.order_id);
+    });
 
-  const orderbook = useMemo((): OrderbookState => ({
-    bids: displayedBids,
-    asks: displayedAsks,
-    spread: baseOrderbook.spread,
-    spreadPercentage: baseOrderbook.spreadPercentage,
-  }), [displayedBids, displayedAsks, baseOrderbook.spread, baseOrderbook.spreadPercentage]);
+    return {
+      orders,
+      buy_orders: buyOrders,
+      sell_orders: sellOrders,
+      balances: {}
+    };
+  }, [initialBuyOrders, initialSellOrders]);
+
+  const displayedBuyOrders = useMemo(() => {
+    if (focus === 'sell') return [];
+    const orderIds = Object.values(baseOrderbook.buy_orders)[0] || [];
+    return orderIds
+      .map(id => baseOrderbook.orders[id])
+      .filter((order): order is Order => order !== undefined)
+      .sort((a, b) => (b.price || 0) - (a.price || 0));
+  }, [baseOrderbook.buy_orders, baseOrderbook.orders, focus]);
+
+  const displayedSellOrders = useMemo(() => {
+    if (focus === 'buy') return [];
+    const orderIds = Object.values(baseOrderbook.sell_orders)[0] || [];
+    return orderIds
+      .map(id => baseOrderbook.orders[id])
+      .filter((order): order is Order => order !== undefined)
+      .sort((a, b) => (a.price || 0) - (b.price || 0));
+  }, [baseOrderbook.sell_orders, baseOrderbook.orders, focus]);
+
+  const orderbook = useMemo(() => {
+    const highestBuyPrice = displayedBuyOrders[0]?.price || 0;
+    const lowestSellPrice = displayedSellOrders[0]?.price || 0;
+    const spread = Math.max(0, lowestSellPrice - highestBuyPrice);
+    const spreadPercentage = highestBuyPrice > 0 ? (spread / highestBuyPrice) * 100 : 0;
+
+    return {
+      buyOrders: displayedBuyOrders,
+      sellOrders: displayedSellOrders,
+      spread,
+      spreadPercentage
+    };
+  }, [displayedBuyOrders, displayedSellOrders]);
 
   const setFocus = (newFocus: OrderbookFocus) => {
     setFocusState(newFocus);
-    // onFocusChange prop can be called here if passed to the hook
   };
-
 
   return {
     orderbook,
     focus,
     setFocus,
-    // TODO: Expose sorting and grouping functions
   };
-}; 
+};

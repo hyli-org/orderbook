@@ -77,9 +77,14 @@ const hexToRgb = (hex: string): string => {
   return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0,0,0';
 };
 
-export const OrderbookRow: React.FC<OrderbookRowProps> = ({ order, type, maxTotal = 1 }) => {
-  const { price, size, total } = order;
-  const isBid = type === 'bid';
+export const OrderbookRow: React.FC<OrderbookRowProps> = ({ 
+  order, 
+  maxTotal = 1,
+  onClick,
+  precision = 2
+}) => {
+  const total = (order.price || 0) * order.quantity;
+  const isBid = order.order_type === 'Buy';
   const depthPercentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
 
   // Format numbers with thousand separators
@@ -91,11 +96,11 @@ export const OrderbookRow: React.FC<OrderbookRowProps> = ({ order, type, maxTota
   };
 
   return (
-    <RowContainer isBid={isBid}>
+    <RowContainer isBid={isBid} onClick={() => onClick?.(order)}>
       <DepthBar isBid={isBid} depthPercentage={depthPercentage} />
-      <PriceItem isBid={isBid}>{formatNumber(price, 2)}</PriceItem>
-      <SizeItem>{formatNumber(size, 4)}</SizeItem>
-      <TotalItem>{formatNumber(total, 2)}</TotalItem>
+      <PriceItem isBid={isBid}>{formatNumber(order.price || 0, precision)}</PriceItem>
+      <SizeItem>{formatNumber(order.quantity, precision)}</SizeItem>
+      <TotalItem>{formatNumber(total, precision)}</TotalItem>
     </RowContainer>
   );
-}; 
+};

@@ -105,6 +105,7 @@ const PairPage: React.FC = () => {
                 <Orderbook 
                   showHeader={true}
                   showSpread={true}
+                  rawOrderbook={orderbook}
                 />
               </div>
             </div>
