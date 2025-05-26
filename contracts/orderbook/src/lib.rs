@@ -282,6 +282,12 @@ impl Orderbook {
                         }
                     }
 
+                    // Update history
+                    self.orders_history
+                        .entry(order.pair.clone())
+                        .or_default()
+                        .insert(order.timestamp.clone(), existing_order.price.unwrap());
+
                     // There is an order that can be filled
                     match existing_order.quantity.cmp(&order.quantity) {
                         std::cmp::Ordering::Greater => {
@@ -430,6 +436,12 @@ impl Orderbook {
                         }
                     }
 
+                    // Update history
+                    self.orders_history
+                        .entry(order.pair.clone())
+                        .or_default()
+                        .insert(order.timestamp.clone(), existing_order.price.unwrap());
+
                     match existing_order.quantity.cmp(&order.quantity) {
                         std::cmp::Ordering::Greater => {
                             // The existing order do not fully cover this order
@@ -567,6 +579,8 @@ pub struct Orderbook {
     buy_orders: HashMap<TokenPair, VecDeque<String>>,
     // Sell orders sorted by price (lowest first) for each token pair
     sell_orders: HashMap<TokenPair, VecDeque<String>>,
+    // History of orders executed, indexed by token pair and timestamp
+    orders_history: HashMap<TokenPair, HashMap<TimestampMs, u32>>,
 }
 
 impl Orderbook {
@@ -696,6 +710,7 @@ impl Default for Orderbook {
             orders,
             buy_orders,
             sell_orders,
+            orders_history: HashMap::new(),
         }
     }
 }
@@ -710,6 +725,7 @@ impl Orderbook {
             orders: HashMap::new(),
             buy_orders: HashMap::new(),
             sell_orders: HashMap::new(),
+            orders_history: HashMap::new(),
         }
     }
 }

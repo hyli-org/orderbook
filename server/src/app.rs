@@ -160,17 +160,17 @@ impl OrderbookModule {
                                 message: event_clone,
                             })?;
                         }
-                        OrderbookEvent::OrderCreated { order } => {
-                            let pair = format!("{}-{}", order.pair.0, order.pair.1);
+                        OrderbookEvent::OrderCancelled { pair, .. }
+                        | OrderbookEvent::OrderExecuted { pair, .. }
+                        | OrderbookEvent::OrderUpdate { pair, .. } => {
+                            let pair = format!("{}-{}", pair.0, pair.1);
                             self.bus.send(WsTopicMessage {
                                 topic: pair,
                                 message: event_clone,
                             })?;
                         }
-                        OrderbookEvent::OrderCancelled { pair, .. }
-                        | OrderbookEvent::OrderExecuted { pair, .. }
-                        | OrderbookEvent::OrderUpdate { pair, .. } => {
-                            let pair = format!("{}-{}", pair.0, pair.1);
+                        OrderbookEvent::OrderCreated { order } => {
+                            let pair = format!("{}-{}", order.pair.0, order.pair.1);
                             self.bus.send(WsTopicMessage {
                                 topic: pair,
                                 message: event_clone,

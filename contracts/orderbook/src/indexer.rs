@@ -21,6 +21,7 @@ impl ContractHandler for Orderbook {
             .routes(routes!(get_orders))
             .routes(routes!(get_orders_by_pair))
             .routes(routes!(get_orders_by_user))
+            .routes(routes!(get_pair_history))
             .split_for_parts();
 
         (router.with_state(store), api)
@@ -203,6 +204,44 @@ pub async fn get_orders_by_user(
             anyhow!(
                 "No orders found for user '{}' in contract '{}'",
                 address,
+                store.contract_name
+            ),
+        ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/orders/history/{base_token}/{quote_token}",
+    tag = "Contract",
+    params(
+        ("base_token" = String, Path, description = "Base token of the pair"),
+        ("quote_token" = String, Path, description = "Quote token of the pair")
+    ),
+    responses(
+        (status = OK, description = "Get trading history for a specific token pair")
+    )
+)]
+pub async fn get_pair_history(
+    State(state): State<ContractHandlerStore<Orderbook>>,
+    axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
+) -> Result<impl IntoResponse, AppError> {
+    let store = state.read().await;
+    let pair = (base_token.clone(), quote_token.clone());
+
+    store
+        .state
+        .as_ref()
+        .map(|state| {
+            let history = state.orders_history.get(&pair).cloned().unwrap_or_default();
+
+            Json(history)
+        })
+        .ok_or(AppError(
+            StatusCode::NOT_FOUND,
+            anyhow!(
+                "No history found for pair '{}/{}' in contract '{}'",
+                base_token,
+                quote_token,
                 store.contract_name
             ),
         ))
