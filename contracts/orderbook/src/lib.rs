@@ -21,9 +21,9 @@ impl sdk::ZkContract for Orderbook {
             return Err("tx_ctx is missing".to_string());
         };
 
-        if tx_ctx.lane_id != sdk::LaneId(ValidatorPublicKey::default()) {
-            return Err("Invalid lane id".to_string());
-        }
+        // if tx_ctx.lane_id != sdk::LaneId(ValidatorPublicKey::default()) {
+        //     return Err("Invalid lane id".to_string());
+        // }
 
         // The contract must be provided with all blobs
         if calldata.blobs.len() != calldata.tx_blob_count {
@@ -91,12 +91,7 @@ impl Orderbook {
         amount: u32,
         user: String,
     ) -> Result<Vec<OrderbookEvent>, String> {
-        let user_balances = self
-            .balances
-            .get_mut(&user)
-            .ok_or(format!("User {user} not found"))?;
-
-        let balance = user_balances.entry(token.clone()).or_insert(0);
+        let balance = self.get_balance_mut(&user, &token);
         *balance += amount;
         Ok(vec![OrderbookEvent::BalanceUpdated {
             user,
@@ -111,15 +106,11 @@ impl Orderbook {
         amount: u32,
         user: String,
     ) -> Result<Vec<OrderbookEvent>, String> {
-        let user_balances = self
-            .balances
-            .get_mut(&user)
-            .ok_or(format!("User {user} not found"))?;
-        let balance = user_balances.get_mut(&token).ok_or("Token not found")?;
+        let balance = self.get_balance_mut(&user, &token);
 
         if *balance < amount {
             return Err(format!(
-                "Insufficient balance: user {} has {} {} tokens, trying to withdraw {}",
+                "Could not withdraw: Insufficient balance: user {} has {} {} tokens, trying to withdraw {}",
                 user, balance, token, amount
             ));
         }
@@ -427,6 +418,12 @@ impl Orderbook {
                     )?;
 
                     return Ok(events);
+                } else if buy_orders_option.is_none() {
+                    // If there are no buy orders and this is a market order, we cannot proceed
+                    return Err(format!(
+                        "No matching buy orders for market order {}",
+                        order.order_id
+                    ));
                 }
 
                 let buy_orders = buy_orders_option.unwrap();
@@ -633,13 +630,16 @@ impl Orderbook {
         Ok(())
     }
 
-    pub fn get_balance(&mut self, user: &str, token: &str) -> u32 {
-        *self
-            .balances
+    pub fn get_balance_mut(&mut self, user: &str, token: &str) -> &mut u32 {
+        self.balances
             .entry(user.to_string())
             .or_default()
             .entry(token.to_owned())
             .or_default()
+    }
+
+    pub fn get_balance(&mut self, user: &str, token: &str) -> u32 {
+        *self.get_balance_mut(user, token)
     }
 
     fn insert_order(&mut self, order: Order) -> Result<(), String> {

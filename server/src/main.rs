@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
-use app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage};
 use axum::Router;
 use clap::Parser;
 use client_sdk::rest_client::{IndexerApiHttpClient, NodeApiClient, NodeApiHttpClient};
-use conf::Conf;
 use contracts::ORDERBOOK_ELF;
 use hyle_modules::{
     bus::{metrics::BusMetrics, SharedMessageBus},
@@ -20,13 +18,13 @@ use hyle_modules::{
 use orderbook::{Orderbook, OrderbookAction};
 use prometheus::Registry;
 use sdk::{api::NodeInfo, info, ZkContract};
+use server::app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage};
+use server::conf::Conf;
+use server::init;
+use server::rollup_executor::{RollupExecutor, RollupExecutorCtx};
 use sp1_sdk::{Prover, ProverClient};
 use std::sync::{Arc, Mutex};
 use tracing::error;
-
-mod app;
-mod conf;
-mod init;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -96,17 +94,21 @@ async fn main() -> Result<()> {
 
     let orderbook_ctx = Arc::new(OrderbookModuleCtx {
         api: api_ctx.clone(),
-        node_client,
         orderbook_cn: args.orderbook_cn.clone().into(),
-        validator_lane_id,
     });
-    let start_height = orderbook_ctx.node_client.get_block_height().await?;
 
     handler
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
 
-    // Ajouter un matching
+    handler
+        .build_module::<RollupExecutor<Orderbook>>(RollupExecutorCtx {
+            data_directory: config.data_directory.clone(),
+            contract_name: args.orderbook_cn.clone().into(),
+            default_state: Default::default(),
+            validator_lane_id,
+        })
+        .await?;
 
     handler
         .build_module::<WebSocketModule<OrderbookWsInMessage, OrderbookAction>>(
@@ -124,11 +126,10 @@ async fn main() -> Result<()> {
 
     handler
         .build_module::<AutoProver<Orderbook>>(Arc::new(AutoProverCtx {
-            start_height,
             data_directory: config.data_directory.clone(),
             prover: Arc::new(prover),
             contract_name: args.orderbook_cn.clone().into(),
-            node: orderbook_ctx.node_client.clone(),
+            node: node_client.clone(),
             default_state: Default::default(),
         }))
         .await?;
