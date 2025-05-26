@@ -582,8 +582,10 @@ impl Orderbook {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Orderbook {
+    // Validator public key of the lane this orderbook is running on
+    lane_id: ValidatorPublicKey,
     // Map of user address to token balances
     balances: HashMap<String, HashMap<String, u32>>,
     // All orders indexed by order_id
@@ -674,13 +676,7 @@ impl Orderbook {
         self.accepted_tokens.contains(contract_name) || contract_name.0 == "orderbook" || contract_name.0 == "wallet" || contract_name.0 == "secp256k1"
     }
 
-    pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
-        borsh::to_vec(self)
-    }
-}
-
-impl Default for Orderbook {
-    fn default() -> Self {
+    pub fn init_with_fake_data(lane_id: ValidatorPublicKey) -> Self {
         let user1 = "Alice".to_string();
         let user2 = "Bob".to_string();
 
@@ -734,6 +730,7 @@ impl Default for Orderbook {
         ]);
 
         Orderbook {
+            lane_id,
             balances,
             orders,
             buy_orders,
@@ -742,10 +739,15 @@ impl Default for Orderbook {
             accepted_tokens
         }
     }
+
+    pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
+        borsh::to_vec(self)
+    }
 }
 
+
 impl Orderbook {
-    pub fn init_with_fake_data() -> Self {
+    pub fn init(lane_id: ValidatorPublicKey) -> Self {
         let mut balances = HashMap::new();
         balances.insert("orderbook".to_string(), HashMap::new());
 
@@ -755,6 +757,7 @@ impl Orderbook {
         ]);
 
         Orderbook {
+            lane_id,
             balances,
             orders: HashMap::new(),
             buy_orders: HashMap::new(),
@@ -855,7 +858,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn setup() -> (String, String, Orderbook) {
-        let mut orderbook = Orderbook::init_with_fake_data();
+        let mut orderbook = Orderbook::init(ValidatorPublicKey::default());
         let eth_user = "eth_user".to_string();
         let usd_user = "usd_user".to_string();
 

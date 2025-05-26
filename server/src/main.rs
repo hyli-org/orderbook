@@ -68,10 +68,12 @@ async fn main() -> Result<()> {
         return Ok(());
     };
 
+    let default_state = Orderbook::init_with_fake_data(validator_lane_id.clone());
+
     let contracts = vec![init::ContractInit {
         name: args.orderbook_cn.clone().into(),
         program_id: prover.program_id().expect("getting program id").0,
-        initial_state: Orderbook::default().commit(),
+        initial_state: default_state.commit(),
     }];
 
     match init::init_node(node_client.clone(), indexer_client.clone(), contracts).await {
@@ -105,7 +107,7 @@ async fn main() -> Result<()> {
         .build_module::<RollupExecutor<Orderbook>>(RollupExecutorCtx {
             data_directory: config.data_directory.clone(),
             contract_name: args.orderbook_cn.clone().into(),
-            default_state: Default::default(),
+            default_state: default_state.clone(),
             validator_lane_id,
         })
         .await?;
@@ -130,7 +132,7 @@ async fn main() -> Result<()> {
             prover: Arc::new(prover),
             contract_name: args.orderbook_cn.clone().into(),
             node: node_client.clone(),
-            default_state: Default::default(),
+            default_state,
         }))
         .await?;
 
