@@ -682,15 +682,15 @@ impl Orderbook {
 
         let mut balances = HashMap::new();
         balances.insert(user1.clone(), HashMap::from([
-            ("ORANJ".to_string(), 5),
-            ("HYLLAR".to_string(), 20),
+            ("oranj".to_string(), 5),
+            ("hyllar".to_string(), 20),
         ]));
         balances.insert(user2.clone(), HashMap::from([
-            ("ORANJ".to_string(), 10),
-            ("HYLLAR".to_string(), 10),
+            ("oranj".to_string(), 10),
+            ("hyllar".to_string(), 10),
         ]));
 
-        let pair = ("ORANJ".to_string(), "HYLLAR".to_string());
+        let pair = ("oranj".to_string(), "hyllar".to_string());
         let now = TimestampMs(1);
 
         let order1 = Order {
