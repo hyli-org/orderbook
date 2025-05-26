@@ -22,6 +22,7 @@ impl ContractHandler for Orderbook {
             .routes(routes!(get_orders_by_pair))
             .routes(routes!(get_orders_by_user))
             .routes(routes!(get_pair_history))
+            .routes(routes!(get_pair_candles))
             .split_for_parts();
 
         (router.with_state(store), api)
@@ -240,6 +241,118 @@ pub async fn get_pair_history(
             StatusCode::NOT_FOUND,
             anyhow!(
                 "No history found for pair '{}/{}' in contract '{}'",
+                base_token,
+                quote_token,
+                store.contract_name
+            ),
+        ))
+}
+
+#[derive(Serialize)]
+struct CandleStick {
+    timestamp: TimestampMs,
+    open: u32,
+    high: u32,
+    low: u32,
+    close: u32,
+    volume: u32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/orders/candles/{base_token}/{quote_token}",
+    tag = "Contract",
+    params(
+        ("base_token" = String, Path, description = "Base token of the pair"),
+        ("quote_token" = String, Path, description = "Quote token of the pair"),
+        ("from" = i64, Query, description = "Start timestamp in milliseconds"),
+        ("to" = i64, Query, description = "End timestamp in milliseconds"),
+        ("interval" = i64, Query, description = "Candle interval in milliseconds")
+    ),
+    responses(
+        (status = OK, description = "Get OHLCV data for a specific token pair")
+    )
+)]
+pub async fn get_pair_candles(
+    State(state): State<ContractHandlerStore<Orderbook>>,
+    axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<impl IntoResponse, AppError> {
+    let store = state.read().await;
+    let pair = (base_token.clone(), quote_token.clone());
+
+    // Parse query parameters
+    let from = params
+        .get("from")
+        .and_then(|s| s.parse::<u128>().ok())
+        .map(TimestampMs)
+        .ok_or(AppError(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Missing or invalid 'from' parameter"),
+        ))?;
+
+    let to = params
+        .get("to")
+        .and_then(|s| s.parse::<u128>().ok())
+        .map(TimestampMs)
+        .ok_or(AppError(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Missing or invalid 'to' parameter"),
+        ))?;
+
+    let interval = params
+        .get("interval")
+        .and_then(|s| s.parse::<u128>().ok())
+        .ok_or(AppError(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Missing or invalid 'interval' parameter"),
+        ))?;
+
+    store
+        .state
+        .as_ref()
+        .map(|state| {
+            let history = state.orders_history.get(&pair).cloned().unwrap_or_default();
+
+            // Group trades by interval and create candles
+            let mut candles: Vec<CandleStick> = Vec::new();
+            let mut current_time = from;
+
+            while current_time.0 < to.0 {
+                let next_time = TimestampMs(current_time.0 + interval);
+
+                // Filter trades within current interval
+                let interval_trades: Vec<_> = history
+                    .iter()
+                    .filter(|(ts, _)| ts.0 >= current_time.0 && ts.0 < next_time.0)
+                    .collect();
+
+                if !interval_trades.is_empty() {
+                    // Calculate OHLCV data
+                    let prices: Vec<_> = interval_trades.iter().map(|(_, &price)| price).collect();
+                    let volume: u32 = prices.iter().sum();
+
+                    let candle = CandleStick {
+                        timestamp: current_time,
+                        open: *prices.first().unwrap_or(&0),
+                        high: *prices.iter().max().unwrap_or(&0),
+                        low: *prices.iter().min().unwrap_or(&0),
+                        close: *prices.last().unwrap_or(&0),
+                        volume,
+                    };
+
+                    candles.push(candle);
+                }
+
+                current_time = next_time;
+            }
+
+            Json(candles)
+        })
+        .ok_or(AppError(
+            StatusCode::NOT_FOUND,
+            anyhow!(
+                "No candle data found for pair '{}/{}' in contract '{}'",
                 base_token,
                 quote_token,
                 store.contract_name
