@@ -2,7 +2,7 @@ use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sdk::{hyle_model_utils::TimestampMs, RunResult, ValidatorPublicKey};
+use sdk::{hyle_model_utils::TimestampMs, ContractName, RunResult, ValidatorPublicKey};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -25,6 +25,21 @@ impl sdk::ZkContract for Orderbook {
             return Err("Invalid lane id".to_string());
         }
 
+        // The contract must be provided with all blobs
+        if calldata.blobs.len() != calldata.tx_blob_count {
+            return Err("Calldata is not composed with all tx's blobs".to_string());
+        }
+
+        // Check if blobs in the calldata are all whitelisted
+        for (_, blob) in &calldata.blobs {
+            if !self.is_blob_whitelisted(&blob.contract_name) {
+                return Err(format!(
+                    "Blob with contract name {} is not whitelisted",
+                    blob.contract_name
+                ));
+            }
+        }
+
         // Execute the given action
         let events = match action {
             OrderbookAction::CreateOrder {
@@ -34,6 +49,7 @@ impl sdk::ZkContract for Orderbook {
                 pair,
                 quantity,
             } => {
+
                 let order = Order {
                     owner: user,
                     order_id,
@@ -581,6 +597,8 @@ pub struct Orderbook {
     sell_orders: HashMap<TokenPair, VecDeque<String>>,
     // History of orders executed, indexed by token pair and timestamp
     orders_history: HashMap<TokenPair, HashMap<TimestampMs, u32>>,
+    // Accepted tokens
+    accepted_tokens: HashSet<ContractName>,
 }
 
 impl Orderbook {
@@ -652,6 +670,10 @@ impl Orderbook {
         Ok(())
     }
 
+    pub fn is_blob_whitelisted(&self, contract_name: &ContractName) -> bool {
+        self.accepted_tokens.contains(contract_name) || contract_name.0 == "orderbook" || contract_name.0 == "wallet" || contract_name.0 == "secp256k1"
+    }
+
     pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
         borsh::to_vec(self)
     }
@@ -665,14 +687,14 @@ impl Default for Orderbook {
         let mut balances = HashMap::new();
         balances.insert(user1.clone(), HashMap::from([
             ("ORANJ".to_string(), 5),
-            ("USDC".to_string(), 20),
+            ("HYLLAR".to_string(), 20),
         ]));
         balances.insert(user2.clone(), HashMap::from([
             ("ORANJ".to_string(), 10),
-            ("USDC".to_string(), 10),
+            ("HYLLAR".to_string(), 10),
         ]));
 
-        let pair = ("ORANJ".to_string(), "USDC".to_string());
+        let pair = ("ORANJ".to_string(), "HYLLAR".to_string());
         let now = TimestampMs(1);
 
         let order1 = Order {
@@ -705,12 +727,19 @@ impl Default for Orderbook {
         let mut sell_orders = HashMap::new();
         sell_orders.insert(pair.clone(), VecDeque::from(vec![order2.order_id.clone()]));
 
+
+        let accepted_tokens = HashSet::from([
+            "oranj".into(),
+            "hyllar".into(),
+        ]);
+
         Orderbook {
             balances,
             orders,
             buy_orders,
             sell_orders,
             orders_history: HashMap::new(),
+            accepted_tokens
         }
     }
 }
@@ -720,12 +749,18 @@ impl Orderbook {
         let mut balances = HashMap::new();
         balances.insert("orderbook".to_string(), HashMap::new());
 
+        let accepted_tokens = HashSet::from([
+            "oranj".into(),
+            "hyllar".into(),
+        ]);
+
         Orderbook {
             balances,
             orders: HashMap::new(),
             buy_orders: HashMap::new(),
             sell_orders: HashMap::new(),
             orders_history: HashMap::new(),
+            accepted_tokens
         }
     }
 }
