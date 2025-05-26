@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["contracts", "contracts/orderbook", "server"]
+
+[workspace.dependencies]
+sdk = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-contract-sdk", branch = "main" }
+client-sdk = { git = "https://github.com/Hyle-org/hyle.git", default-features = false, package = "hyle-client-sdk", branch = "main" }
+hyle-modules = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-modules", branch = "main" }
+
+contracts = { path = "contracts", default-features = false, package = "contracts" }
+orderbook = { path = "contracts/orderbook", package = "orderbook" }
+
+[workspace.package]
+version = "0.4.1"
+edition = "2021"
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.8-sp1-4.0.0" }
