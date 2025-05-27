@@ -15,7 +15,7 @@ use hyle_modules::{
     },
     utils::logger::setup_tracing,
 };
-use orderbook::{Orderbook, OrderbookAction};
+use orderbook::{Orderbook, OrderbookEvent};
 use prometheus::Registry;
 use sdk::{api::NodeInfo, info, ContractName, ZkContract};
 use server::conf::Conf;
@@ -141,7 +141,7 @@ async fn main() -> Result<()> {
         .await?;
 
     handler
-        .build_module::<WebSocketModule<OrderbookWsInMessage, OrderbookAction>>(
+        .build_module::<WebSocketModule<OrderbookWsInMessage, OrderbookEvent>>(
             config.websocket.clone(),
         )
         .await?;
