@@ -8,7 +8,7 @@ use hyle_modules::{
 };
 use sdk::{
     BlobTransaction, Calldata, ContractName, Hashed, HyleOutput, LaneId, MempoolStatusEvent,
-    NodeStateEvent, TransactionData, TxContext, TxHash, ValidatorPublicKey,
+    NodeStateEvent, TransactionData, TxContext, TxHash,
 };
 use std::collections::HashSet;
 use std::{
@@ -41,7 +41,7 @@ impl<Contract: Send + Sync + Clone + 'static> DerefMut for RollupExecutor<Contra
 
 #[derive(Default, BorshSerialize, BorshDeserialize)]
 pub struct RollupExecutorStore<Contract> {
-    validator_lane_id: ValidatorPublicKey,
+    validator_lane_id: LaneId,
     contract_name: ContractName,
     unsettled_txs: Vec<(BlobTransaction, TxContext)>,
     state_history: Vec<(TxHash, Contract)>,
@@ -52,7 +52,7 @@ pub struct RollupExecutorCtx<Contract> {
     pub data_directory: PathBuf,
     pub contract_name: ContractName,
     pub default_state: Contract,
-    pub validator_lane_id: ValidatorPublicKey,
+    pub validator_lane_id: LaneId,
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +172,7 @@ where
         match event {
             MempoolStatusEvent::WaitingDissemination { tx, .. } => {
                 let tx_ctx = Some(TxContext {
-                    lane_id: LaneId(self.validator_lane_id.clone()),
+                    lane_id: self.validator_lane_id.clone(),
                     ..Default::default()
                 });
                 if let TransactionData::Blob(blob_tx) = tx.transaction_data {

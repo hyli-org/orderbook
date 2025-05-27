@@ -25,6 +25,7 @@ client-sdk = { workspace = true, default-features = false, features = [
   "sp1",
   "rest",
 ], optional = true }
+hex = "0.4.3"
 
 [dev-dependencies]
 test-log = { version = "0.2.17", features = [

@@ -2,7 +2,7 @@ use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sdk::{hyle_model_utils::TimestampMs, ContractName, RunResult, ValidatorPublicKey};
+use sdk::{hyle_model_utils::TimestampMs, ContractName, LaneId, RunResult};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -21,9 +21,9 @@ impl sdk::ZkContract for Orderbook {
             return Err("tx_ctx is missing".to_string());
         };
 
-        // if tx_ctx.lane_id != sdk::LaneId(ValidatorPublicKey::default()) {
-        //     return Err("Invalid lane id".to_string());
-        // }
+        if tx_ctx.lane_id != self.lane_id {
+            return Err("Invalid lane id".to_string());
+        }
 
         // The contract must be provided with all blobs
         if calldata.blobs.len() != calldata.tx_blob_count {
@@ -585,7 +585,7 @@ impl Orderbook {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Orderbook {
     // Validator public key of the lane this orderbook is running on
-    lane_id: ValidatorPublicKey,
+    lane_id: LaneId,
     // Map of user address to token balances
     balances: HashMap<String, HashMap<String, u32>>,
     // All orders indexed by order_id
@@ -683,7 +683,7 @@ impl Orderbook {
 
 
 impl Orderbook {
-    pub fn init(lane_id: ValidatorPublicKey) -> Self {
+    pub fn init(lane_id: LaneId) -> Self {
         let mut balances = HashMap::new();
         balances.insert("orderbook".to_string(), HashMap::new());
 
@@ -703,7 +703,7 @@ impl Orderbook {
         }
     }
 
-    pub fn init_with_fake_data(lane_id: ValidatorPublicKey) -> Self {
+    pub fn init_with_fake_data(lane_id: LaneId) -> Self {
         let user1 = "Alice".to_string();
         let user2 = "Bob".to_string();
 
@@ -858,7 +858,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn setup() -> (String, String, Orderbook) {
-        let mut orderbook = Orderbook::init(ValidatorPublicKey::default());
+        let mut orderbook = Orderbook::init(LaneId::default());
         let eth_user = "eth_user".to_string();
         let usd_user = "usd_user".to_string();
 

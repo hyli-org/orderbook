@@ -3441,6 +3441,7 @@ dependencies = [
  "anyhow",
  "borsh",
  "clap",
+ "hex",
  "hyle-client-sdk",
  "hyle-contract-sdk",
  "orderbook",

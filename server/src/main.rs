@@ -63,8 +63,16 @@ async fn main() -> Result<()> {
     info!("Building Proving Key");
     let prover = client_sdk::helpers::sp1::SP1Prover::new(pk).await;
 
-    let Some(validator_lane_id) = node_client.get_node_info().await?.pubkey else {
-        error!("Validator lane id not found");
+    let validator_lane_id = node_client
+        .get_node_info()
+        .await?
+        .pubkey
+        .map(sdk::LaneId)
+        .ok_or_else(|| {
+            error!("Validator lane id not found");
+        })
+        .ok();
+    let Some(validator_lane_id) = validator_lane_id else {
         return Ok(());
     };
 
