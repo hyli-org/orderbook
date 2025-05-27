@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use axum::{
@@ -10,15 +10,16 @@ use axum::{
 };
 use hyle_modules::{
     bus::{BusClientSender, SharedMessageBus},
-    module_bus_client, module_handle_messages,
+    log_warn, module_bus_client, module_handle_messages,
     modules::{
         websocket::{WsInMessage, WsTopicMessage},
         BuildApiContextInner, Module,
     },
 };
 use orderbook::{Orderbook, OrderbookEvent};
-use sdk::{ContractName, Hashed};
+use sdk::{hyle_model_utils::TimestampMs, ContractName, Hashed};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::debug;
 
@@ -26,11 +27,13 @@ use crate::rollup_executor::RollupExecutorEvent;
 
 pub struct OrderbookModule {
     bus: OrderbookModuleBusClient,
+    contract: Arc<RwLock<Orderbook>>,
 }
 
 pub struct OrderbookModuleCtx {
     pub api: Arc<BuildApiContextInner>,
     pub orderbook_cn: ContractName,
+    pub default_state: Orderbook,
 }
 
 /// Messages received from WebSocket clients that will be processed by the system
@@ -51,8 +54,11 @@ impl Module for OrderbookModule {
     type Context = Arc<OrderbookModuleCtx>;
 
     async fn build(bus: SharedMessageBus, ctx: Self::Context) -> Result<Self> {
+        let contract = Arc::new(RwLock::new(ctx.default_state.clone()));
+
         let state = RouterCtx {
             orderbook_cn: ctx.orderbook_cn.clone(),
+            contract: contract.clone(),
         };
 
         let cors = CorsLayer::new()
@@ -63,6 +69,29 @@ impl Module for OrderbookModule {
         let api = Router::new()
             .route("/_health", get(health))
             .route("/api/config", get(get_config))
+            .route("/api/optimistic/state", get(get_state))
+            .route("/api/optimistic/balances", get(get_balances))
+            .route(
+                "/api/optimistic/balances/{account}",
+                get(get_balance_for_account),
+            )
+            .route("/api/optimistic/orders", get(get_orders))
+            .route(
+                "/api/optimistic/orders/pair/{base_token}/{quote_token}",
+                get(get_orders_by_pair),
+            )
+            .route(
+                "/api/optimistic/orders/user/address",
+                get(get_orders_by_user),
+            )
+            .route(
+                "/api/optimistic/orders/history/{base_token}/{quote_token}",
+                get(get_pair_history),
+            )
+            .route(
+                "/api/optimistic/orders/candles/{base_token}/{quote_token}",
+                get(get_pair_candles),
+            )
             .with_state(state)
             .layer(cors);
 
@@ -73,7 +102,7 @@ impl Module for OrderbookModule {
         }
         let bus = OrderbookModuleBusClient::new_from_bus(bus.new_handle()).await;
 
-        Ok(OrderbookModule { bus })
+        Ok(OrderbookModule { bus, contract })
     }
 
     async fn run(&mut self) -> Result<()> {
@@ -96,7 +125,7 @@ impl OrderbookModule {
         event: RollupExecutorEvent<Orderbook>,
     ) -> Result<()> {
         match event {
-            RollupExecutorEvent::TxExecutionSuccess(blob_tx, _, hyle_outputs) => {
+            RollupExecutorEvent::TxExecutionSuccess(blob_tx, contract, hyle_outputs) => {
                 let mut events = vec![];
                 for hyle_output in hyle_outputs {
                     if !hyle_output.success {
@@ -122,31 +151,45 @@ impl OrderbookModule {
                     }
                 }
 
+                {
+                    let mut contract_guard = self.contract.write().await;
+                    *contract_guard = contract.clone();
+                }
+
                 // Send events to all clients
                 for event in events {
                     let event_clone = event.clone();
                     match &event {
                         OrderbookEvent::BalanceUpdated { user, .. } => {
-                            self.bus.send(WsTopicMessage {
-                                topic: user.clone(),
-                                message: event_clone,
-                            })?;
+                            _ = log_warn!(
+                                self.bus.send(WsTopicMessage {
+                                    topic: user.clone(),
+                                    message: event_clone,
+                                }),
+                                "Failed to send balance update"
+                            );
                         }
                         OrderbookEvent::OrderCancelled { pair, .. }
                         | OrderbookEvent::OrderExecuted { pair, .. }
                         | OrderbookEvent::OrderUpdate { pair, .. } => {
                             let pair = format!("{}-{}", pair.0, pair.1);
-                            self.bus.send(WsTopicMessage {
-                                topic: pair,
-                                message: event_clone,
-                            })?;
+                            _ = log_warn!(
+                                self.bus.send(WsTopicMessage {
+                                    topic: pair,
+                                    message: event_clone,
+                                }),
+                                "Failed to send order event"
+                            );
                         }
                         OrderbookEvent::OrderCreated { order } => {
                             let pair = format!("{}-{}", order.pair.0, order.pair.1);
-                            self.bus.send(WsTopicMessage {
-                                topic: pair,
-                                message: event_clone,
-                            })?;
+                            _ = log_warn!(
+                                self.bus.send(WsTopicMessage {
+                                    topic: pair,
+                                    message: event_clone,
+                                }),
+                                "Failed to send order created event"
+                            );
                         }
                     }
                 }
@@ -162,6 +205,7 @@ impl OrderbookModule {
 #[derive(Clone)]
 struct RouterCtx {
     pub orderbook_cn: ContractName,
+    pub contract: Arc<RwLock<Orderbook>>,
 }
 
 async fn health() -> impl IntoResponse {
@@ -181,4 +225,84 @@ async fn get_config(State(ctx): State<RouterCtx>) -> impl IntoResponse {
     Json(ConfigResponse {
         contract_name: ctx.orderbook_cn.0,
     })
+}
+
+async fn get_state(State(ctx): State<RouterCtx>) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    Json(contract.get_state())
+}
+
+async fn get_balances(State(ctx): State<RouterCtx>) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    Json(contract.get_balances())
+}
+
+async fn get_balance_for_account(
+    State(ctx): State<RouterCtx>,
+    axum::extract::Path(account): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    let balance = contract.get_balance_for_account(&account);
+    Json(balance)
+}
+
+async fn get_orders(State(ctx): State<RouterCtx>) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    Json(contract.get_orders())
+}
+
+async fn get_orders_by_pair(
+    State(ctx): State<RouterCtx>,
+    axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
+) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    let orders = contract.get_orders_by_pair(&base_token, &quote_token);
+    Json(orders)
+}
+
+async fn get_orders_by_user(
+    State(ctx): State<RouterCtx>,
+    axum::extract::Path(address): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    let orders = contract.get_orders_by_user(&address);
+    Json(orders)
+}
+
+async fn get_pair_history(
+    State(ctx): State<RouterCtx>,
+    axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
+) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+    let history = contract.get_pair_history(&base_token, &quote_token);
+    Json(history)
+}
+
+async fn get_pair_candles(
+    State(ctx): State<RouterCtx>,
+    axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let contract = ctx.contract.read().await;
+
+    let from = params
+        .get("from")
+        .and_then(|s| s.parse::<i64>().ok())
+        .map(|ts| TimestampMs(ts as u128))
+        .unwrap_or(TimestampMs(0));
+
+    let to = params
+        .get("to")
+        .and_then(|s| s.parse::<i64>().ok())
+        .map(|ts| TimestampMs(ts as u128))
+        .unwrap_or(TimestampMs(u128::MAX));
+
+    let interval = params
+        .get("interval")
+        .and_then(|s| s.parse::<i64>().ok())
+        .map(|i| i as u128)
+        .unwrap_or(3600000); // 1 hour by default
+
+    let candles = contract.get_pair_candles(&base_token, &quote_token, from, to, interval);
+    Json(candles)
 }

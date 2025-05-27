@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str;
 
 use anyhow::{anyhow, Result};
@@ -44,7 +45,7 @@ pub async fn get_balances(
     store
         .state
         .as_ref()
-        .map(|state| Json(state.balances.clone()))
+        .map(|state| Json(state.get_balances()))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!("No state found for contract '{}'", store.contract_name),
@@ -70,7 +71,7 @@ pub async fn get_balance_for_account(
     store
         .state
         .as_ref()
-        .and_then(|state| state.balances.get(&account).cloned())
+        .and_then(|state| state.get_balance_for_account(&account))
         .map(Json)
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
@@ -97,7 +98,7 @@ pub async fn get_orders(
     store
         .state
         .as_ref()
-        .map(|state| Json(state.orders.clone()))
+        .map(|state| Json(state.get_orders()))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!("No state found for contract '{}'", store.contract_name),
@@ -105,7 +106,7 @@ pub async fn get_orders(
 }
 
 #[derive(Serialize)]
-struct PairOrders {
+pub struct PairOrders {
     buy_orders: Vec<Order>,
     sell_orders: Vec<Order>,
 }
@@ -127,39 +128,10 @@ pub async fn get_orders_by_pair(
     axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     let store = state.read().await;
-    let pair = (base_token.clone(), quote_token.clone());
-
     store
         .state
         .as_ref()
-        .map(|state| {
-            let buy_orders: Vec<_> = state
-                .buy_orders
-                .get(&pair)
-                .map(|ids| {
-                    ids.iter()
-                        .filter_map(|id| state.orders.get(id))
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let sell_orders: Vec<_> = state
-                .sell_orders
-                .get(&pair)
-                .map(|ids| {
-                    ids.iter()
-                        .filter_map(|id| state.orders.get(id))
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            Json(PairOrders {
-                buy_orders,
-                sell_orders,
-            })
-        })
+        .map(|state| Json(state.get_orders_by_pair(&base_token, &quote_token)))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!(
@@ -190,16 +162,7 @@ pub async fn get_orders_by_user(
     store
         .state
         .as_ref()
-        .map(|state| {
-            let user_orders: Vec<_> = state
-                .orders
-                .values()
-                .filter(|order| order.owner == address)
-                .cloned()
-                .collect();
-
-            Json(user_orders)
-        })
+        .map(|state| Json(state.get_orders_by_user(&address)))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!(
@@ -227,16 +190,10 @@ pub async fn get_pair_history(
     axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     let store = state.read().await;
-    let pair = (base_token.clone(), quote_token.clone());
-
     store
         .state
         .as_ref()
-        .map(|state| {
-            let history = state.orders_history.get(&pair).cloned().unwrap_or_default();
-
-            Json(history)
-        })
+        .map(|state| Json(state.get_pair_history(&base_token, &quote_token)))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!(
@@ -249,7 +206,7 @@ pub async fn get_pair_history(
 }
 
 #[derive(Serialize)]
-struct CandleStick {
+pub struct CandleStick {
     timestamp: TimestampMs,
     open: u32,
     high: u32,
@@ -279,7 +236,6 @@ pub async fn get_pair_candles(
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<impl IntoResponse, AppError> {
     let store = state.read().await;
-    let pair = (base_token.clone(), quote_token.clone());
 
     // Parse query parameters
     let from = params
@@ -311,44 +267,7 @@ pub async fn get_pair_candles(
     store
         .state
         .as_ref()
-        .map(|state| {
-            let history = state.orders_history.get(&pair).cloned().unwrap_or_default();
-
-            // Group trades by interval and create candles
-            let mut candles: Vec<CandleStick> = Vec::new();
-            let mut current_time = from;
-
-            while current_time.0 < to.0 {
-                let next_time = TimestampMs(current_time.0 + interval);
-
-                // Filter trades within current interval
-                let interval_trades: Vec<_> = history
-                    .iter()
-                    .filter(|(ts, _)| ts.0 >= current_time.0 && ts.0 < next_time.0)
-                    .collect();
-
-                if !interval_trades.is_empty() {
-                    // Calculate OHLCV data
-                    let prices: Vec<_> = interval_trades.iter().map(|(_, &price)| price).collect();
-                    let volume: u32 = prices.iter().sum();
-
-                    let candle = CandleStick {
-                        timestamp: current_time,
-                        open: *prices.first().unwrap_or(&0),
-                        high: *prices.iter().max().unwrap_or(&0),
-                        low: *prices.iter().min().unwrap_or(&0),
-                        close: *prices.last().unwrap_or(&0),
-                        volume,
-                    };
-
-                    candles.push(candle);
-                }
-
-                current_time = next_time;
-            }
-
-            Json(candles)
-        })
+        .map(|state| Json(state.get_pair_candles(&base_token, &quote_token, from, to, interval)))
         .ok_or(AppError(
             StatusCode::NOT_FOUND,
             anyhow!(
@@ -358,4 +277,114 @@ pub async fn get_pair_candles(
                 store.contract_name
             ),
         ))
+}
+
+/// Implementation for indexing purposes
+impl Orderbook {
+    pub fn get_state(&self) -> Self {
+        self.clone()
+    }
+    pub fn get_balances(&self) -> HashMap<String, HashMap<String, u32>> {
+        self.balances.clone()
+    }
+
+    pub fn get_balance_for_account(&self, account: &str) -> Option<HashMap<String, u32>> {
+        self.balances.get(account).cloned()
+    }
+
+    pub fn get_orders(&self) -> HashMap<String, Order> {
+        self.orders.clone()
+    }
+
+    pub fn get_orders_by_pair(&self, base_token: &str, quote_token: &str) -> PairOrders {
+        let pair = (base_token.to_string(), quote_token.to_string());
+
+        let buy_orders = self
+            .buy_orders
+            .get(&pair)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.orders.get(id))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let sell_orders = self
+            .sell_orders
+            .get(&pair)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.orders.get(id))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        PairOrders {
+            buy_orders,
+            sell_orders,
+        }
+    }
+
+    pub fn get_orders_by_user(&self, address: &str) -> Vec<Order> {
+        self.orders
+            .values()
+            .filter(|order| order.owner == address)
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_pair_history(
+        &self,
+        base_token: &str,
+        quote_token: &str,
+    ) -> HashMap<TimestampMs, u32> {
+        let pair = (base_token.to_string(), quote_token.to_string());
+        self.orders_history.get(&pair).cloned().unwrap_or_default()
+    }
+
+    pub fn get_pair_candles(
+        &self,
+        base_token: &str,
+        quote_token: &str,
+        from: TimestampMs,
+        to: TimestampMs,
+        interval: u128,
+    ) -> Vec<CandleStick> {
+        let pair = (base_token.to_string(), quote_token.to_string());
+        let history = self.orders_history.get(&pair).cloned().unwrap_or_default();
+
+        let mut candles = Vec::new();
+        let mut current_time = from;
+
+        while current_time.0 < to.0 {
+            let next_time = TimestampMs(current_time.0 + interval);
+
+            let interval_trades: Vec<_> = history
+                .iter()
+                .filter(|(ts, _)| ts.0 >= current_time.0 && ts.0 < next_time.0)
+                .collect();
+
+            if !interval_trades.is_empty() {
+                let prices: Vec<_> = interval_trades.iter().map(|(_, &price)| price).collect();
+                let volume: u32 = prices.iter().sum();
+
+                let candle = CandleStick {
+                    timestamp: current_time,
+                    open: *prices.first().unwrap_or(&0),
+                    high: *prices.iter().max().unwrap_or(&0),
+                    low: *prices.iter().min().unwrap_or(&0),
+                    close: *prices.last().unwrap_or(&0),
+                    volume,
+                };
+
+                candles.push(candle);
+            }
+
+            current_time = next_time;
+        }
+
+        candles
+    }
 }

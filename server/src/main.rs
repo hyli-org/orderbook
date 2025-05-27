@@ -97,6 +97,7 @@ async fn main() -> Result<()> {
     let orderbook_ctx = Arc::new(OrderbookModuleCtx {
         api: api_ctx.clone(),
         orderbook_cn: args.orderbook_cn.clone().into(),
+        default_state: default_state.clone(),
     });
 
     handler
