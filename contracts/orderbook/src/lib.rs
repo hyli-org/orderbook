@@ -49,7 +49,6 @@ impl sdk::ZkContract for Orderbook {
                 pair,
                 quantity,
             } => {
-
                 let order = Order {
                     owner: user,
                     order_id,
@@ -59,6 +58,9 @@ impl sdk::ZkContract for Orderbook {
                     quantity,
                     timestamp: tx_ctx.timestamp.clone(),
                 };
+                if self.orders.contains_key(&order.order_id) {
+                    return Err(format!("Order with id {} already exists", order.order_id));
+                }
                 self.execute_order(order)?
             }
             OrderbookAction::Cancel { order_id } => self.cancel_order(order_id, user)?,
