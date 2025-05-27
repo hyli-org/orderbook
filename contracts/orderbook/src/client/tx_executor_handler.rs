@@ -22,9 +22,10 @@ impl TxExecutorHandler for Orderbook {
     }
 
     fn construct_state(
-        _register_blob: &RegisterContractEffect,
+        register_blob: &RegisterContractEffect,
         _metadata: &Option<Vec<u8>>,
     ) -> anyhow::Result<Self> {
-        Ok(Self::default())
+        borsh::from_slice(&register_blob.state_commitment.0)
+            .context("Failed to decode Orderbook state")
     }
 }

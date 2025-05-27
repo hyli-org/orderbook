@@ -676,6 +676,33 @@ impl Orderbook {
         self.accepted_tokens.contains(contract_name) || contract_name.0 == "orderbook" || contract_name.0 == "wallet" || contract_name.0 == "secp256k1"
     }
 
+    pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
+        borsh::to_vec(self)
+    }
+}
+
+
+impl Orderbook {
+    pub fn init(lane_id: ValidatorPublicKey) -> Self {
+        let mut balances = HashMap::new();
+        balances.insert("orderbook".to_string(), HashMap::new());
+
+        let accepted_tokens = HashSet::from([
+            "oranj".into(),
+            "hyllar".into(),
+        ]);
+
+        Orderbook {
+            lane_id,
+            balances,
+            orders: HashMap::new(),
+            buy_orders: HashMap::new(),
+            sell_orders: HashMap::new(),
+            orders_history: HashMap::new(),
+            accepted_tokens
+        }
+    }
+
     pub fn init_with_fake_data(lane_id: ValidatorPublicKey) -> Self {
         let user1 = "Alice".to_string();
         let user2 = "Bob".to_string();
@@ -735,33 +762,6 @@ impl Orderbook {
             orders,
             buy_orders,
             sell_orders,
-            orders_history: HashMap::new(),
-            accepted_tokens
-        }
-    }
-
-    pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
-        borsh::to_vec(self)
-    }
-}
-
-
-impl Orderbook {
-    pub fn init(lane_id: ValidatorPublicKey) -> Self {
-        let mut balances = HashMap::new();
-        balances.insert("orderbook".to_string(), HashMap::new());
-
-        let accepted_tokens = HashSet::from([
-            "oranj".into(),
-            "hyllar".into(),
-        ]);
-
-        Orderbook {
-            lane_id,
-            balances,
-            orders: HashMap::new(),
-            buy_orders: HashMap::new(),
-            sell_orders: HashMap::new(),
             orders_history: HashMap::new(),
             accepted_tokens
         }
