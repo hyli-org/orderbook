@@ -17,13 +17,19 @@ use hyle_modules::{
 };
 use orderbook::{Orderbook, OrderbookAction};
 use prometheus::Registry;
-use sdk::{api::NodeInfo, info, ZkContract};
-use server::app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage};
+use sdk::{api::NodeInfo, info, ContractName, ZkContract};
 use server::conf::Conf;
 use server::init;
 use server::rollup_executor::{RollupExecutor, RollupExecutorCtx};
+use server::{
+    app::{OrderbookModule, OrderbookModuleCtx, OrderbookWsInMessage},
+    rollup_executor::ContractBox,
+};
 use sp1_sdk::{Prover, ProverClient};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tracing::error;
 
 #[derive(Parser, Debug)]
@@ -112,12 +118,25 @@ async fn main() -> Result<()> {
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
 
+    let initial_contracts = HashMap::from([(
+        args.orderbook_cn.clone().into(),
+        ContractBox::new(default_state.clone()),
+    )]);
+
     handler
-        .build_module::<RollupExecutor<Orderbook>>(RollupExecutorCtx {
+        .build_module::<RollupExecutor>(RollupExecutorCtx {
             data_directory: config.data_directory.clone(),
-            contract_name: args.orderbook_cn.clone().into(),
-            default_state: default_state.clone(),
+            initial_contracts,
             validator_lane_id,
+            contract_deserializer: |state: Vec<u8>, contract_name: &ContractName| {
+                match contract_name.0.as_str() {
+                    "orderbook" => ContractBox::new(
+                        borsh::from_slice::<Orderbook>(&state)
+                            .expect("Deserializing orderbook state"),
+                    ),
+                    _ => panic!("Unknown contract name: {}", contract_name.0),
+                }
+            },
         })
         .await?;
 

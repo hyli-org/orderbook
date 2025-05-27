@@ -27,6 +27,7 @@ use crate::rollup_executor::RollupExecutorEvent;
 
 pub struct OrderbookModule {
     bus: OrderbookModuleBusClient,
+    orderbook_cn: ContractName,
     contract: Arc<RwLock<Orderbook>>,
 }
 
@@ -46,7 +47,7 @@ pub struct OrderbookModuleBusClient {
     sender(WsTopicMessage<OrderbookEvent>),
     sender(WsTopicMessage<String>),
     receiver(WsInMessage<OrderbookWsInMessage>),
-    receiver(RollupExecutorEvent<Orderbook>),
+    receiver(RollupExecutorEvent),
 }
 }
 
@@ -102,14 +103,18 @@ impl Module for OrderbookModule {
         }
         let bus = OrderbookModuleBusClient::new_from_bus(bus.new_handle()).await;
 
-        Ok(OrderbookModule { bus, contract })
+        Ok(OrderbookModule {
+            bus,
+            contract,
+            orderbook_cn: ctx.orderbook_cn.clone(),
+        })
     }
 
     async fn run(&mut self) -> Result<()> {
         module_handle_messages! {
             on_bus self.bus,
 
-            listen<RollupExecutorEvent<Orderbook>> event => {
+            listen<RollupExecutorEvent> event => {
                 self.handle_rollup_executor_event(event).await?;
             }
 
@@ -120,12 +125,9 @@ impl Module for OrderbookModule {
 }
 
 impl OrderbookModule {
-    async fn handle_rollup_executor_event(
-        &mut self,
-        event: RollupExecutorEvent<Orderbook>,
-    ) -> Result<()> {
+    async fn handle_rollup_executor_event(&mut self, event: RollupExecutorEvent) -> Result<()> {
         match event {
-            RollupExecutorEvent::TxExecutionSuccess(blob_tx, contract, hyle_outputs) => {
+            RollupExecutorEvent::TxExecutionSuccess(blob_tx, contracts, hyle_outputs) => {
                 let mut events = vec![];
                 for hyle_output in hyle_outputs {
                     if !hyle_output.success {
@@ -151,9 +153,18 @@ impl OrderbookModule {
                     }
                 }
 
+                // Update contract state for optimistic RestAPI
                 {
-                    let mut contract_guard = self.contract.write().await;
-                    *contract_guard = contract.clone();
+                    if let Some(orderbook_contract) = contracts
+                        .iter()
+                        .find(|(contract_name, _)| contract_name == &self.orderbook_cn)
+                        .map(|(_, state)| state.clone())
+                        .expect("Orderbook contract not found")
+                        .downcast::<Orderbook>()
+                    {
+                        let mut contract_guard = self.contract.write().await;
+                        *contract_guard = orderbook_contract.clone();
+                    }
                 }
 
                 // Send events to all clients
