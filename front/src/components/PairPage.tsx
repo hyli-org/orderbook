@@ -1,16 +1,15 @@
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { Orderbook, CandleChart, Positions, TradingForm, MarketInfoBanner, MarketSelector } from './index';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Orderbook, CandleChart, Positions, TradingForm, MarketInfoBanner } from './index';
 import { useTradingData } from '../hooks/useTradingData';
-import { useOrderbookState } from '../hooks/useOrderbookState';
 import { usePositions } from '../hooks/usePositions';
 import { useAppContext } from '../contexts/AppContext';
 import '../App.css';
 
 const PairPage: React.FC = () => {
   const { pairId } = useParams<{ pairId: string }>();
+  const navigate = useNavigate();
   const tradingData = useTradingData(pairId); // Fetches and manages trading data via context
-  const { orderbook } = useOrderbookState(); // Gets orderbook state from context
   const { addPosition } = usePositions(); // Remove positions from here
   const { state: appState } = useAppContext(); // Get full app state
 
@@ -80,7 +79,7 @@ const PairPage: React.FC = () => {
       <header className="app-header">
         <h1>HyLiquid - {assetPair}</h1>
         <div className="header-actions">
-          <button>Deposit</button>
+          <button onClick={() => navigate('/deposit')}>Deposit</button>
         </div>
       </header>
       

@@ -23,7 +23,8 @@ export interface OrderbookProps {
 }
 
 export interface OrderbookHeaderProps {
-  // TODO: Define props
+  currentFocus?: OrderbookFocus;
+  onFocusChange?: (focus: OrderbookFocus) => void;
 }
 
 export interface OrderbookRowProps {

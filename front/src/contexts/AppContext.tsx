@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer } from 'react';
 import type { MockTradingData } from '../utils/mockData';
 import type { Position } from '../types/position';
-import type { OrderbookState, Order } from '../types/orderbook'; // Added Order
+import type { OrderbookState } from '../types/orderbook';
 import type { OrderbookFocus } from '../components/Orderbook/types'; // Assuming this type exists or will be created
 import { DEFAULT_PAIR_ID } from '../constants/assets'; // Import default pair ID
 
@@ -48,12 +48,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_PAIR':
       return { ...state, currentPair: action.payload };
     case 'SET_TRADING_DATA':
-      // When trading data changes, it often implies the orderbook should also update
-      // Ensure this logic is either here or in the component/hook that dispatches SET_TRADING_DATA
+      // When trading data changes, keep orderbook separate (now fetched from API)
       return {
         ...state,
         tradingData: action.payload,
-        orderbook: action.payload.currentOrderbook // Directly update orderbook from trading data
+        // Remove orderbook update from trading data - now handled by API
       };
     case 'ADD_POSITION':
       const { pair, position } = action.payload;

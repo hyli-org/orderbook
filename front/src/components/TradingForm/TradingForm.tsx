@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import type { Position } from '../../types/position'; // Import Position interface
+import { nodeService } from '../../services/NodeService'; // Added
+import { createOrder, OrderType as OrderbookOrderType } from '../../models/Orderbook'; // Added
+import type { BlobTransaction, Identity } from 'hyli'; // Added
 
 // Assuming Position interface is available or imported
 // For now, let's define it here if not globally available in this context
@@ -217,14 +220,16 @@ const PercentageDisplay = styled.div`
 `;
 
 export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice }) => {
-  const [activeTab, setActiveTab] = useState<'market' | 'limit' | 'pro'>('market');
+  const [activeTab, setActiveTab] = useState<'market' | 'limit'>('market');
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState<string>('');
+  const [limitPrice, setLimitPrice] = useState<string>(''); // Added for limit orders
   const [percentage, setPercentage] = useState<number>(0);
 
   // Get current pair information
-  const currentPair = localStorage.getItem('lastVisitedPair') || "ORANJ/USDC";
-  const [baseAsset, quoteAsset] = currentPair.split('/');
+  const currentPairString = localStorage.getItem('lastVisitedPair') || "ORANJ/USDC";
+  const [baseAsset, quoteAsset] = currentPairString.split('/');
+  const currentPair: [string, string] = [baseAsset, quoteAsset];
 
   // Mock available balance - replace with actual balance from your state management
   const availableBalance = 1000; // Example: 1000 USDC
@@ -249,27 +254,70 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
     }
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => { // Made async
     e.preventDefault();
-    if (!onSubmit || !amount) return;
+    if (!amount) return; // Removed onSubmit from condition as we're handling it here
 
-    const size = parseFloat(amount) * (orderType === 'buy' ? 1 : -1);
-    const entryPrice = marketPrice || 0; // Use marketPrice prop, fallback to 0
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      console.error("Invalid amount");
+      return;
+    }
 
-    // Create a new position object with the required fields
-    const newPosition: Position = {
-      asset: baseAsset, // Use baseAsset from currentPair
-      pairName: currentPair, // Add the currentPair as pairName
-      size,
-      entryPrice,
-      markPrice: entryPrice, // For simplicity, markPrice = entryPrice initially
-      pnl: 0,
-      pnlPercent: 0,
+    const orderId = crypto.randomUUID(); // Generate a unique order ID
+
+    let price: number | null = null;
+    if (activeTab === 'limit') {
+      const numericLimitPrice = parseFloat(limitPrice);
+      if (isNaN(numericLimitPrice) || numericLimitPrice <= 0) {
+        console.error("Invalid limit price");
+        return;
+      }
+      price = numericLimitPrice;
+    }
+
+    const blob = createOrder(
+      orderId,
+      orderType === 'buy' ? OrderbookOrderType.Buy : OrderbookOrderType.Sell,
+      price, // Use limit price if activeTab is 'limit', else null for market
+      currentPair,
+      numericAmount,
+    );
+
+    const identity: Identity = "user@orderbook";
+
+    const blobTx: BlobTransaction = {
+      identity,
+      blobs: [blob],
     };
 
-    onSubmit(newPosition);
-    setAmount(''); // Reset amount after submission
-    setPercentage(0); // Reset percentage after submission
+    try {
+      console.log('Sending transaction:', blobTx);
+      const blobTxHash = await nodeService.client.sendBlobTx(blobTx);
+      console.log('Transaction sent, hash:', blobTxHash);
+
+      // Original onSubmit logic for UI update (if any)
+      if (onSubmit) {
+        const size = numericAmount * (orderType === 'buy' ? 1 : -1);
+        const entryPrice = activeTab === 'market' ? (marketPrice || 0) : price!;
+        const newPosition: Position = {
+          asset: baseAsset,
+          pairName: currentPairString,
+          size,
+          entryPrice,
+          markPrice: entryPrice, 
+          pnl: 0,
+          pnlPercent: 0,
+        };
+        onSubmit(newPosition);
+      }
+      setAmount(''); 
+      setLimitPrice('');
+      setPercentage(0); 
+    } catch (error) {
+      console.error('Failed to send transaction:', error);
+      // Handle error appropriately in the UI
+    }
   };
 
   return (
@@ -286,12 +334,6 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
           onClick={() => setActiveTab('limit')}
         >
           Limit
-        </Tab>
-        <Tab 
-          active={activeTab === 'pro'} 
-          onClick={() => setActiveTab('pro')}
-        >
-          Pro
         </Tab>
       </TabsContainer>
       
@@ -319,6 +361,21 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
           <Label>Available to Trade</Label>
           <Value>{availableBalance.toFixed(2)} {quoteAsset}</Value>
         </FlexRow>
+        
+        {activeTab === 'limit' && (
+          <FormGroup>
+            <FlexRow>
+                <Label>Limit Price</Label>
+                <Value>{quoteAsset}</Value>
+            </FlexRow>
+            <FormInput 
+                type="number" 
+                placeholder="0.00"
+                value={limitPrice}
+                onChange={(e) => setLimitPrice(e.target.value)}
+            />
+          </FormGroup>
+        )}
 
         <FormGroup>
           <FlexRow>
@@ -349,8 +406,8 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
           />
         </FormGroup>
 
-        <PlaceOrderButton type="submit">
-          Place Order
+        <PlaceOrderButton type="submit" disabled={!amount || (activeTab === 'limit' && !limitPrice)}>
+          {orderType === 'buy' ? 'Buy' : 'Sell'} {baseAsset}
         </PlaceOrderButton>
         
         <InfoRow>

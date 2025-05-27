@@ -3,18 +3,36 @@ import { OrderbookHeader } from './OrderbookHeader';
 import { OrderbookRow } from './OrderbookRow';
 import { OrderbookSpread } from './OrderbookSpread';
 import { useOrderbookState } from '../../hooks/useOrderbookState';
+import { useOrderbookData } from '../../hooks/useOrderbookData';
+import { useAppContext } from '../../contexts/AppContext';
 import type { Order } from '../../types/orderbook';
 import type { OrderbookProps } from './types';
 
-export const Orderbook: React.FC<Omit<OrderbookProps, 'bids' | 'asks' | 'focus' | 'onFocusChange'>> = ({
+interface OrderbookComponentProps extends Omit<OrderbookProps, 'bids' | 'asks' | 'focus' | 'onFocusChange'> {
+  refreshInterval?: number; // Optional refresh interval in milliseconds
+}
+
+export const Orderbook: React.FC<OrderbookComponentProps> = ({
   showHeader = true,
   showSpread = true,
   maxRows = 10,
   precision = 5,
   grouping = 1,
   onOrderClick,
+  refreshInterval, // Remove default value, will be undefined for single fetch
 }) => {
-  const { orderbook, focus, setFocus } = useOrderbookState();
+  const { state } = useAppContext();
+  const { focus, setFocus } = useOrderbookState();
+  
+  // Fetch real orderbook data from API - single fetch only (no refresh interval)
+  const { orderbook: apiOrderbook, loading, error, refetch } = useOrderbookData(
+    state.currentPair,
+    refreshInterval // Will be undefined, so no auto-refresh
+  );
+  
+  // Use only API data, no fallback to mock data
+  const orderbook = apiOrderbook;
+    
   const { bids, asks, spread, spreadPercentage } = orderbook;
 
   const getProcessedOrders = (orders: Order[], isAsks: boolean, count: number): Order[] => {
@@ -31,6 +49,27 @@ export const Orderbook: React.FC<Omit<OrderbookProps, 'bids' | 'asks' | 'focus' 
   const maxAskTotal = displayedAsks.length > 0 ? Math.max(...displayedAsks.map(ask => ask.total)) : 0;
   const maxBidTotal = displayedBids.length > 0 ? Math.max(...displayedBids.map(bid => bid.total)) : 0;
   const maxTotal = Math.max(maxAskTotal, maxBidTotal);
+
+  // Show loading state
+  if (loading && orderbook.bids.length === 0 && orderbook.asks.length === 0) {
+    return (
+      <div className="orderbook-container">
+        <div className="orderbook-loading">Loading orderbook...</div>
+      </div>
+    );
+  }
+
+  // Show error state with retry option
+  if (error && orderbook.bids.length === 0 && orderbook.asks.length === 0) {
+    return (
+      <div className="orderbook-container">
+        <div className="orderbook-error">
+          <div>Error loading orderbook: {error}</div>
+          <button onClick={refetch} className="retry-button">Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="orderbook-container">

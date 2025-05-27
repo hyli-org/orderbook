@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { PairPage } from './components'; // Assuming PairPage is in './components'
+import DepositForm from './components/DepositForm/DepositForm'; // Import DepositForm
 import { AppProvider, useAppContext } from './contexts/AppContext'; // Import AppProvider and useAppContext
 import './App.css';
 import { useEffect } from 'react'; // Import useEffect
@@ -32,6 +33,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to={`/pair/${lastVisitedPairUrl}`} replace />} />
           <Route path="/pair/:pairId" element={<PairPage />} />
+          <Route path="/deposit" element={<DepositForm />} />
         </Routes>
       </AppInitializer>
     </AppProvider>

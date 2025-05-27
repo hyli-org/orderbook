@@ -60,7 +60,7 @@ export const useOrderbook = (initialBids?: Order[], initialAsks?: Order[], initi
     return generateMockOrderbook();
   }, [initialBids, initialAsks]);
 
-  const GHOST_ORDERBOOK_FOR_COMPILATION = generateMockOrderbook(); // This seems like a remnant, consider removing if not needed
+  // Removed unused GHOST_ORDERBOOK_FOR_COMPILATION
 
   const displayedBids = useMemo(() => {
     if (focus === 'asks') return [];

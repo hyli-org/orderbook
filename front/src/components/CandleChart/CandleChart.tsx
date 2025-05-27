@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType } from 'lightweight-charts';
-import type { DeepPartial, ChartOptions, CandlestickSeriesOptions, HistogramSeriesPartialOptions, Time } from 'lightweight-charts';
+import { createChart } from 'lightweight-charts';
+import type { DeepPartial, ChartOptions, CandlestickSeriesOptions, Time } from 'lightweight-charts';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import type { CandleData as ExternalCandleData } from '../../utils/mockData'; // Import the CandleData type

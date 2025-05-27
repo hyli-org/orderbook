@@ -26,7 +26,10 @@ const HeaderItemRight = styled.span`
   text-align: right;
 `;
 
-export const OrderbookHeader: React.FC<OrderbookHeaderProps> = () => {
+export const OrderbookHeader: React.FC<OrderbookHeaderProps> = ({ 
+  currentFocus: _currentFocus, 
+  onFocusChange: _onFocusChange 
+}) => {
   return (
     <HeaderContainer>
       <HeaderItemLeft>Price</HeaderItemLeft>
