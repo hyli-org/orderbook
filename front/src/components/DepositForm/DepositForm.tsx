@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import { deposit } from '../../models/Orderbook';
 import { nodeService } from '../../services/NodeService';
 import type { Blob, BlobTransaction, Identity } from 'hyli';
+import { useAppContext } from '../../contexts/AppContext';
 
 // Page Container
 const PageContainer = styled.div`
@@ -340,22 +341,40 @@ const InfoItem = styled.li`
   }
 `;
 
+// Balance Display
+const BalanceDisplay = styled.div`
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: ${theme.colors.textSecondary};
+  font-size: 14px;
+  text-align: center;
+
+  span {
+    color: ${theme.colors.text};
+    font-weight: 600;
+  }
+`;
+
 // Define available currencies
 const CURRENCIES = ["HYLLAR", "ORANJ"];
 
 const DepositForm: React.FC = () => {
     const navigate = useNavigate();
-    const [tokenAddress, setTokenAddress] = useState<string>('');
+    const { state, fetchBalances } = useAppContext();
+    const currentUser = state.currentUser;
     const [amount, setAmount] = useState<string>('');
     const [selectedCurrency, setSelectedCurrency] = useState<string>(CURRENCIES[0]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+    const userBalance = state.balances?.[selectedCurrency] ?? 0;
+
     const handleBack = () => {
-        const lastVisitedPair = localStorage.getItem('lastVisitedPair') || 'ORANJ/USDC';
-        const pairUrl = lastVisitedPair.replace('/', '-');
-        navigate(`/pair/${pairUrl}`);
+        navigate(`/pair/${state.currentPair.replace('/', '-')}`);
     };
 
     const handleDeposit = async (event: React.FormEvent) => {
@@ -369,11 +388,6 @@ const DepositForm: React.FC = () => {
             return;
         }
 
-        if (!tokenAddress.trim()) {
-            setError('Please enter your account ID.');
-            return;
-        }
-
         setIsLoading(true);
 
         const blob = deposit(
@@ -381,7 +395,7 @@ const DepositForm: React.FC = () => {
             numericAmount,
         );
 
-        const identity: Identity = "user@orderbook";
+        const identity: Identity = currentUser as Identity;
 
         const blobTx: BlobTransaction = {
             identity,
@@ -393,8 +407,10 @@ const DepositForm: React.FC = () => {
             const blobTxHash = await nodeService.client.sendBlobTx(blobTx);
             console.log('Deposit transaction successful, hash:', blobTxHash);
             setSuccessMessage(`Deposit successful! Your ${selectedCurrency} will be available shortly.`);
-            setTokenAddress('');
             setAmount('');
+            if (currentUser) {
+                await fetchBalances(currentUser);
+            }
         } catch (e: any) {
             console.error('Deposit transaction failed:', e);
             setError(e.message || 'An unknown error occurred during deposit.');
@@ -420,25 +436,11 @@ const DepositForm: React.FC = () => {
                     <TitleSection>
                         <Title>Deposit Funds</Title>
                         <Subtitle>
-                            Add funds to your HyLiquid account to start trading
+                            Add funds to your HyLiquid account ({currentUser}) to start trading
                         </Subtitle>
                     </TitleSection>
 
                     <Form onSubmit={handleDeposit}>
-                        <FormGroup>
-                            <Label htmlFor="tokenAddress">Account ID</Label>
-                            <InputWrapper>
-                                <FormInput
-                                    id="tokenAddress"
-                                    type="text"
-                                    value={tokenAddress}
-                                    onChange={(e) => setTokenAddress(e.target.value)}
-                                    placeholder="Enter your account ID"
-                                    required
-                                />
-                            </InputWrapper>
-                        </FormGroup>
-
                         <FormGroup>
                             <Label htmlFor="currency">Currency</Label>
                             <SelectStyled
@@ -470,6 +472,10 @@ const DepositForm: React.FC = () => {
                                 )}
                             </InputWrapper>
                         </FormGroup>
+
+                        <BalanceDisplay>
+                            Your current balance: <span>{userBalance.toFixed(6)} {selectedCurrency}</span>
+                        </BalanceDisplay>
 
                         <SubmitButton type="submit" disabled={isLoading}>
                             {isLoading && <LoadingSpinner />}

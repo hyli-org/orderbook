@@ -10,13 +10,12 @@ export interface MockAsset {
 
 export const MOCK_ASSETS: MockAsset[] = [
   {
-    id: "ORANJ/USDC",
-    name: "Oranj / USD Coin",
+    id: "ORANJ/HYLLAR",
+    name: "Oranj / Hyllar",
     baseAsset: "ORANJ",
-    quoteAsset: "USDC",
-    defaultPrice: 25,
+    quoteAsset: "HYLLAR",
+    defaultPrice: 2.3721, // Calculated as 25.5 / 10.75
     category: "Spot",
-    contractAddress: "0x0ranJ0C0inContractAddress123",
   },
   {
     id: "BTC/USDC",
@@ -60,15 +59,8 @@ export const MOCK_ASSETS: MockAsset[] = [
     defaultPrice: 10.75,
     category: "Spot",
   },
-  {
-    id: "ORANJ/HYLLAR",
-    name: "Oranj / Hyllar",
-    baseAsset: "ORANJ",
-    quoteAsset: "HYLLAR",
-    defaultPrice: 2.3721, // Calculated as 25.5 / 10.75
-    category: "Spot",
-  },
+  
   // Add more mock assets as needed
 ];
 
-export const DEFAULT_PAIR_ID = MOCK_ASSETS[0].id; // Default to ORANJ/USDC 
+export const DEFAULT_PAIR_ID = MOCK_ASSETS[0].id; // Default to ORANJ/HYLLAR 

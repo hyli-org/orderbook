@@ -82,7 +82,7 @@ impl Module for OrderbookModule {
                 get(get_orders_by_pair),
             )
             .route(
-                "/api/optimistic/orders/user/address",
+                "/api/optimistic/orders/user/{address}",
                 get(get_orders_by_user),
             )
             .route(

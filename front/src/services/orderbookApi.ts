@@ -1,51 +1,22 @@
-import type { ApiOrderbookResponse, ApiOrder } from '../types/api';
+import type { ApiOrderbookResponse } from '../types/api';
 import type { OrderbookState, Order } from '../types/orderbook';
 import { API_CONFIG } from '../types/api';
-
-/**
- * Transform API order to internal order format
- */
-const transformApiOrderToOrder = (apiOrder: ApiOrder): Order => {
-  return {
-    price: apiOrder.price,
-    size: apiOrder.quantity,
-    total: apiOrder.price * apiOrder.quantity,
-  };
-};
 
 /**
  * Transform API response to internal orderbook format
  */
 const transformApiResponseToOrderbook = (apiResponse: ApiOrderbookResponse): OrderbookState => {
-  // Transform and sort orders
-  const bids = apiResponse.buy_orders
-    .map(transformApiOrderToOrder)
-    .sort((a, b) => b.price - a.price); // Bids sorted descending by price
-
-  const asks = apiResponse.sell_orders
-    .map(transformApiOrderToOrder)
-    .sort((a, b) => a.price - b.price); // Asks sorted ascending by price
-
-  // Calculate cumulative totals for depth visualization
-  let cumulativeBidTotal = 0;
-  const bidsWithCumulativeTotal = bids.map(bid => {
-    cumulativeBidTotal += bid.size;
-    return { ...bid, total: cumulativeBidTotal };
-  });
-
-  let cumulativeAskTotal = 0;
-  const asksWithCumulativeTotal = asks.map(ask => {
-    cumulativeAskTotal += ask.size;
-    return { ...ask, total: cumulativeAskTotal };
-  });
+  // Use orders directly from API response
+  const bids: Order[] = apiResponse.buy_orders.slice().sort((a, b) => b.price - a.price); // Bids sorted descending by price
+  const asks: Order[] = apiResponse.sell_orders.slice().sort((a, b) => a.price - b.price); // Asks sorted ascending by price
 
   // Calculate spread
   const spread = asks.length > 0 && bids.length > 0 ? asks[0].price - bids[0].price : 0;
   const spreadPercentage = bids.length > 0 && bids[0].price > 0 ? (spread / bids[0].price) * 100 : 0;
 
   return {
-    bids: bidsWithCumulativeTotal,
-    asks: asksWithCumulativeTotal,
+    bids: bids, // Store sorted bids directly
+    asks: asks, // Store sorted asks directly
     spread: parseFloat(spread.toFixed(5)),
     spreadPercentage: parseFloat(spreadPercentage.toFixed(2)),
   };

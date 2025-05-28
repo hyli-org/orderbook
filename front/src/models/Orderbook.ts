@@ -22,7 +22,6 @@ export interface Order {
     price: number | null;
     pair: TokenPair;
     quantity: number;
-    timestamp: number;
 }
 
 export type OrderbookAction =

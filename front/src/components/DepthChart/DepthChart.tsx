@@ -96,7 +96,7 @@ const prepareDepthData = (orders: Order[], isAsk: boolean) => {
   const data: { price: number; depth: number }[] = [];
   
   for (const order of sortedOrders) {
-    cumulativeVolume += order.size;
+    cumulativeVolume += order.quantity;
     data.push({
       price: order.price,
       depth: cumulativeVolume,

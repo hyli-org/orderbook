@@ -1,17 +1,8 @@
-// API response types that match the backend format
-export interface ApiOrder {
-  owner: string;
-  order_id: string;
-  order_type: "Buy" | "Sell";
-  price: number;
-  pair: [string, string];
-  quantity: number;
-  timestamp: number;
-}
+import type { Order } from './orderbook';
 
 export interface ApiOrderbookResponse {
-  buy_orders: ApiOrder[];
-  sell_orders: ApiOrder[];
+  buy_orders: Order[];
+  sell_orders: Order[];
 }
 
 // Environment configuration

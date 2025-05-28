@@ -28,7 +28,7 @@ export interface OrderbookHeaderProps {
 }
 
 export interface OrderbookRowProps {
-  order: Order;
+  order: Order & { total: number };
   type: 'bid' | 'ask';
   maxTotal?: number; // For depth visualization
   onClick?: (order: Order, type: 'bid' | 'ask') => void;

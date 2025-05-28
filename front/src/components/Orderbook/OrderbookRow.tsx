@@ -78,12 +78,15 @@ const hexToRgb = (hex: string): string => {
 };
 
 export const OrderbookRow: React.FC<OrderbookRowProps> = ({ order, type, maxTotal = 1 }) => {
-  const { price, size, total } = order;
+  const { price, quantity, total } = order;
   const isBid = type === 'bid';
   const depthPercentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
 
   // Format numbers with thousand separators
   const formatNumber = (num: number, decimals: number): string => {
+    if (!num) {
+      return '0';
+    }
     return num.toLocaleString(undefined, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
@@ -94,7 +97,7 @@ export const OrderbookRow: React.FC<OrderbookRowProps> = ({ order, type, maxTota
     <RowContainer isBid={isBid}>
       <DepthBar isBid={isBid} depthPercentage={depthPercentage} />
       <PriceItem isBid={isBid}>{formatNumber(price, 2)}</PriceItem>
-      <SizeItem>{formatNumber(size, 4)}</SizeItem>
+      <SizeItem>{formatNumber(quantity, 4)}</SizeItem>
       <TotalItem>{formatNumber(total, 2)}</TotalItem>
     </RowContainer>
   );

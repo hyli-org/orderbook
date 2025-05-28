@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import type { Position } from '../../types/position'; // Import Position interface
 import { nodeService } from '../../services/NodeService'; // Added
 import { createOrder, OrderType as OrderbookOrderType } from '../../models/Orderbook'; // Added
 import type { BlobTransaction, Identity } from 'hyli'; // Added
+import { useAppContext } from '../../contexts/AppContext'; // Import useAppContext
+import { usePositionsContext } from '../../contexts/PositionsContext'; // Import usePositionsContext
 
 // Assuming Position interface is available or imported
 // For now, let's define it here if not globally available in this context
@@ -220,6 +222,10 @@ const PercentageDisplay = styled.div`
 `;
 
 export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice }) => {
+  const { state, fetchBalances } = useAppContext(); // Use AppContext
+  const { currentUser, balances } = state;
+  const { refetchPositions } = usePositionsContext(); // Get refetchPositions from context
+
   const [activeTab, setActiveTab] = useState<'market' | 'limit'>('market');
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState<string>('');
@@ -227,19 +233,22 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
   const [percentage, setPercentage] = useState<number>(0);
 
   // Get current pair information
-  const currentPairString = localStorage.getItem('lastVisitedPair') || "ORANJ/USDC";
+  const currentPairString = state.currentPair;
   const [baseAsset, quoteAsset] = currentPairString.split('/');
   const currentPair: [string, string] = [baseAsset, quoteAsset];
 
-  // Mock available balance - replace with actual balance from your state management
-  const availableBalance = 1000; // Example: 1000 USDC
+  // Get available balance from context, ensuring balances is not null
+  const availableBalance = balances ? (balances[quoteAsset] || 0) : 0;
+  const baseAssetBalance = balances ? (balances[baseAsset] || 0) : 0;
 
   const handleAmountChange = (newAmount: string) => {
     setAmount(newAmount);
     const numericAmount = parseFloat(newAmount);
     if (!isNaN(numericAmount) && availableBalance > 0) {
-      setPercentage((numericAmount / availableBalance) * 100);
-    } else if (newAmount === '') {
+      // Ensure percentage calculation doesn't exceed 100 if amount > balance for some reason
+      const calculatedPercentage = (numericAmount / availableBalance) * 100;
+      setPercentage(Math.min(calculatedPercentage, 100)); 
+    } else if (newAmount === '' || numericAmount === 0) {
       setPercentage(0);
     }
   };
@@ -248,7 +257,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
     const newPercentage = parseInt(event.target.value, 10);
     setPercentage(newPercentage);
     if (availableBalance > 0) {
-      setAmount(((newPercentage / 100) * availableBalance).toFixed(2));
+      setAmount(((newPercentage / 100) * availableBalance).toFixed(2)); // toFixed(2) for currency format
     } else {
       setAmount('0.00');
     }
@@ -256,12 +265,25 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
   
   const handleSubmit = async (e: React.FormEvent) => { // Made async
     e.preventDefault();
-    if (!amount) return; // Removed onSubmit from condition as we're handling it here
+    if (!amount) return; 
 
     const numericAmount = parseFloat(amount);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       console.error("Invalid amount");
       return;
+    }
+
+    // Check if sufficient balance for sell orders or for buy orders (cost)
+    const orderValue = activeTab === 'limit' ? (parseFloat(limitPrice) * numericAmount) : (marketPrice ? marketPrice * numericAmount : 0);
+    if (orderType === 'buy' && availableBalance < orderValue) {
+      console.error("Insufficient balance to place buy order.");
+      // Here you might want to set an error state to show in the UI
+      return;
+    }
+    if (orderType === 'sell' && baseAssetBalance < numericAmount) {
+        console.error("Insufficient balance to place sell order.");
+        // Here you might want to set an error state to show in the UI
+        return;
     }
 
     const orderId = crypto.randomUUID(); // Generate a unique order ID
@@ -279,12 +301,12 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
     const blob = createOrder(
       orderId,
       orderType === 'buy' ? OrderbookOrderType.Buy : OrderbookOrderType.Sell,
-      price, // Use limit price if activeTab is 'limit', else null for market
+      price, 
       currentPair,
       numericAmount,
     );
 
-    const identity: Identity = "user@orderbook";
+    const identity: Identity = currentUser as Identity; // Use currentUser from context
 
     const blobTx: BlobTransaction = {
       identity,
@@ -295,22 +317,15 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
       console.log('Sending transaction:', blobTx);
       const blobTxHash = await nodeService.client.sendBlobTx(blobTx);
       console.log('Transaction sent, hash:', blobTxHash);
-
-      // Original onSubmit logic for UI update (if any)
-      if (onSubmit) {
-        const size = numericAmount * (orderType === 'buy' ? 1 : -1);
-        const entryPrice = activeTab === 'market' ? (marketPrice || 0) : price!;
-        const newPosition: Position = {
-          asset: baseAsset,
-          pairName: currentPairString,
-          size,
-          entryPrice,
-          markPrice: entryPrice, 
-          pnl: 0,
-          pnlPercent: 0,
-        };
-        onSubmit(newPosition);
+      
+      // Fetch updated balances after successful order
+      if (currentUser) {
+        await fetchBalances(currentUser);
       }
+
+      // Refetch positions after successful order and balance update
+      refetchPositions();
+
       setAmount(''); 
       setLimitPrice('');
       setPercentage(0); 
@@ -318,6 +333,23 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
       console.error('Failed to send transaction:', error);
       // Handle error appropriately in the UI
     }
+  };
+
+  // Calculate order value for display
+  const calculatedOrderValue = () => {
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) return 'N/A';
+
+    if (activeTab === 'market') {
+      if (marketPrice && marketPrice > 0) {
+        return (numericAmount * marketPrice).toFixed(2) + ' ' + quoteAsset;
+      }
+      return 'N/A (Market price unavailable)';
+    }
+    // Limit order
+    const numericLimitPrice = parseFloat(limitPrice);
+    if (isNaN(numericLimitPrice) || numericLimitPrice <= 0) return 'N/A';
+    return (numericAmount * numericLimitPrice).toFixed(2) + ' ' + quoteAsset;
   };
 
   return (
@@ -359,20 +391,26 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
 
         <FlexRow>
           <Label>Available to Trade</Label>
-          <Value>{availableBalance.toFixed(2)} {quoteAsset}</Value>
+          <Value>
+            {orderType === 'buy' 
+              ? availableBalance.toFixed(2) // Quote asset balance for buying
+              : baseAssetBalance.toFixed(2) // Base asset balance for selling
+            } {orderType === 'buy' ? quoteAsset : baseAsset}
+          </Value>
         </FlexRow>
         
         {activeTab === 'limit' && (
           <FormGroup>
             <FlexRow>
                 <Label>Limit Price</Label>
-                <Value>{quoteAsset}</Value>
+                <Label>{orderType === 'buy' ? quoteAsset : baseAsset}</Label>
             </FlexRow>
             <FormInput 
                 type="number" 
                 placeholder="0.00"
                 value={limitPrice}
                 onChange={(e) => setLimitPrice(e.target.value)}
+                step="any" // Allow decimal input
             />
           </FormGroup>
         )}
@@ -392,6 +430,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
             placeholder="0.00" 
             value={amount}
             onChange={(e) => handleAmountChange(e.target.value)}
+            step="any" // Allow decimal input
           />
         </FormGroup>
 
@@ -412,7 +451,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice 
         
         <InfoRow>
           <InfoLabel>Order Value</InfoLabel>
-          <InfoValue>N/A</InfoValue>
+          <InfoValue>{calculatedOrderValue()}</InfoValue>
         </InfoRow>
         
         <InfoRow>
