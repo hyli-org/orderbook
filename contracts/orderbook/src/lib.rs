@@ -2,7 +2,7 @@ use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sdk::{hyle_model_utils::TimestampMs, ContractName, LaneId, RunResult};
+use sdk::{hyle_model_utils::TimestampMs, BlockHeight, ContractName, LaneId, RunResult};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -61,12 +61,12 @@ impl sdk::ZkContract for Orderbook {
                 if self.orders.contains_key(&order.order_id) {
                     return Err(format!("Order with id {} already exists", order.order_id));
                 }
-                self.execute_order(order)?
+                self.execute_order(order, tx_ctx)?
             }
             OrderbookAction::Cancel { order_id } => self.cancel_order(order_id, user)?,
             OrderbookAction::Deposit { token, amount } => {
                 // TODO: assert there is a transfer blob for that token
-                self.deposit(token, amount, user)?
+                self.deposit(token, amount, user, tx_ctx)?
             }
             OrderbookAction::Withdraw { token, amount } => {
                 // TODO: assert there is a transfer blob for that token
@@ -92,13 +92,19 @@ impl Orderbook {
         token: String,
         amount: u32,
         user: String,
+        tx_ctx: &sdk::TxContext,
     ) -> Result<Vec<OrderbookEvent>, String> {
         let balance = self.get_balance_mut(&user, &token);
         *balance += amount;
+        let balance = *balance;
+
+        let latest_deposit_block_height = self.get_latest_deposit_mut(&user, &token);
+        *latest_deposit_block_height = tx_ctx.block_height;
+
         Ok(vec![OrderbookEvent::BalanceUpdated {
             user,
             token,
-            amount: *balance,
+            amount: balance,
         }])
     }
 
@@ -186,7 +192,7 @@ impl Orderbook {
         ])
     }
 
-    fn execute_order(&mut self, mut order: Order) -> Result<Vec<OrderbookEvent>, String> {
+    fn execute_order(&mut self, mut order: Order, tx_ctx: &sdk::TxContext) -> Result<Vec<OrderbookEvent>, String> {
         let mut events = Vec::new();
 
         // Check if user has enough balance for the order
@@ -207,6 +213,14 @@ impl Orderbook {
         };
 
         let user_balance = self.get_balance(&user, &required_token);
+        let latest_deposit_block_height = self.get_latest_deposit(&user, &required_token);
+
+        if tx_ctx.block_height < latest_deposit_block_height + 5 {
+            return Err(format!(
+                "User {} tried to execute an order too soon after the last deposit block height: {:?} < {}. 5 blocks are required between deposits and order execution.",
+                user, tx_ctx.block_height, latest_deposit_block_height.0 + 5
+            ));
+        }
 
         // For limit orders, verify sufficient balance
         if let Some(amount) = required_amount {
@@ -590,6 +604,8 @@ pub struct Orderbook {
     lane_id: LaneId,
     // Map of user address to token balances
     balances: HashMap<String, HashMap<String, u32>>,
+    // Map of user address to token latest deposit block height
+    latest_deposit: HashMap<String, HashMap<String, BlockHeight>>,
     // All orders indexed by order_id
     orders: HashMap<String, Order>,
     // Buy orders sorted by price (highest first) for each token pair
@@ -646,6 +662,18 @@ impl Orderbook {
         *self.get_balance_mut(user, token)
     }
 
+    pub fn get_latest_deposit_mut(&mut self, user: &str, token: &str) -> &mut BlockHeight {
+        self.latest_deposit
+            .entry(user.to_string())
+            .or_default()
+            .entry(token.to_owned())
+            .or_default()
+    }
+
+    pub fn get_latest_deposit(&mut self, user: &str, token: &str) -> BlockHeight {
+        *self.get_latest_deposit_mut(user, token)
+    }
+
     fn insert_order(&mut self, order: Order) -> Result<(), String> {
         // Function only called for Limit orders
         let price = order.price.unwrap();
@@ -697,6 +725,7 @@ impl Orderbook {
         Orderbook {
             lane_id,
             balances,
+            latest_deposit: HashMap::new(),
             orders: HashMap::new(),
             buy_orders: HashMap::new(),
             sell_orders: HashMap::new(),
@@ -717,6 +746,16 @@ impl Orderbook {
         balances.insert(user2.clone(), HashMap::from([
             ("oranj".to_string(), 10),
             ("hyllar".to_string(), 10),
+        ]));
+
+        let mut latest_deposit = HashMap::new();
+        latest_deposit.insert(user1.clone(), HashMap::from([
+            ("oranj".to_string(), BlockHeight(0)),
+            ("hyllar".to_string(), BlockHeight(0)),
+        ]));
+        latest_deposit.insert(user2.clone(), HashMap::from([
+            ("oranj".to_string(), BlockHeight(0)),
+            ("hyllar".to_string(), BlockHeight(0)),
         ]));
 
         let pair = ("oranj".to_string(), "hyllar".to_string());
@@ -761,6 +800,7 @@ impl Orderbook {
         Orderbook {
             lane_id,
             balances,
+            latest_deposit,
             orders,
             buy_orders,
             sell_orders,
@@ -859,6 +899,14 @@ mod tests {
     use crate::*;
     use std::collections::HashMap;
 
+    static TX_CTX: sdk::TxContext = sdk::TxContext {
+            block_height: sdk::BlockHeight(6),
+            lane_id: LaneId(sdk::ValidatorPublicKey(vec![])),
+            timestamp: TimestampMs(0),
+            block_hash: sdk::ConsensusProposalHash(String::new()),
+            chain_id: 0,
+        };
+
     fn setup() -> (String, String, Orderbook) {
         let mut orderbook = Orderbook::init(LaneId::default());
         let eth_user = "eth_user".to_string();
@@ -872,6 +920,15 @@ mod tests {
         usd_token.insert("USD".to_string(), 3000);
 
         orderbook.balances.insert(usd_user.clone(), usd_token);
+
+        orderbook.latest_deposit.insert(
+            eth_user.clone(),
+            HashMap::from([("ETH".to_string(), BlockHeight(0))]));
+
+        orderbook.latest_deposit.insert(
+            usd_user.clone(),
+            HashMap::from([("USD".to_string(), BlockHeight(0))]),
+        );
 
         (eth_user, usd_user, orderbook)
     }
@@ -891,7 +948,7 @@ mod tests {
             timestamp: TimestampMs(0),
         };
 
-        let events = orderbook.execute_order(order.clone()).unwrap();
+        let events = orderbook.execute_order(order.clone(), &TX_CTX).unwrap();
 
         // Check that the order was created
         assert_eq!(events.len(), 3);
@@ -930,7 +987,7 @@ mod tests {
             timestamp: TimestampMs(0),
         };
 
-        let events = orderbook.execute_order(order.clone()).unwrap();
+        let events = orderbook.execute_order(order.clone(), &TX_CTX).unwrap();
 
         // Check that the order was created
         assert_eq!(events.len(), 3);
@@ -968,7 +1025,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a matching buy order
         let buy_order = Order {
@@ -981,7 +1038,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that the order was executed
         assert_eq!(events.len(), 6);
@@ -1032,7 +1089,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a matching buy order
         let buy_order = Order {
@@ -1044,7 +1101,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(1),
         };
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that the order was NOT executed
         assert_eq!(events.len(), 3);
@@ -1108,7 +1165,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a matching buy order
         let buy_order = Order {
@@ -1120,7 +1177,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(1),
         };
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that the order was NOT executed
         assert_eq!(events.len(), 3);
@@ -1184,7 +1241,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a matching buy order
         let buy_order = Order {
@@ -1197,7 +1254,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that the order was executed
         assert_eq!(events.len(), 6);
@@ -1241,7 +1298,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a buy order for 2 ETH
         let buy_order = Order {
@@ -1254,7 +1311,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that the order was NOT executed
         assert_eq!(events.len(), 7);
@@ -1315,7 +1372,7 @@ mod tests {
             quantity: 2,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a buy order for 1 ETH
         let buy_order = Order {
@@ -1328,7 +1385,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that we got an OrderUpdate event
         assert!(events.iter().any(|event| matches!(event,
@@ -1375,7 +1432,7 @@ mod tests {
             quantity: 2,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a buy order for 1 ETH at a higher price
         let buy_order = Order {
@@ -1388,7 +1445,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Check that we got an OrderUpdate event
         assert!(events.iter().any(|event| matches!(event,
@@ -1435,7 +1492,7 @@ mod tests {
             quantity: 2,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(buy_order).unwrap();
+        orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Create a market sell order for 1 ETH
         let sell_order = Order {
@@ -1448,7 +1505,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(sell_order).unwrap();
+        let events = orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Order should be executed immediately at the buy order's price
         assert!(events.iter().any(|event| matches!(event, OrderbookEvent::OrderUpdate { 
@@ -1479,7 +1536,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(buy_order).unwrap();
+        orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Create a market sell order for 1 ETH
         let sell_order = Order {
@@ -1492,7 +1549,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(sell_order).unwrap();
+        let events = orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         assert_eq!(events.len(), 5);
         let executed_count = events
@@ -1544,7 +1601,7 @@ mod tests {
             timestamp: TimestampMs(0),
         };
         
-        orderbook.execute_order(buy_order).unwrap();
+        orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Create a market sell order for 2 ETH
         let sell_order = Order {
@@ -1557,7 +1614,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(sell_order).unwrap();
+        let events = orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         assert_eq!(events.len(), 5);
         let executed_count = events
@@ -1609,7 +1666,7 @@ mod tests {
             quantity: 2,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a market buy order for 1 ETH
         let buy_order = Order {
@@ -1622,7 +1679,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Order should be executed immediately at the sell order's price
         assert!(events.iter().any(|event| matches!(event, OrderbookEvent::OrderUpdate { 
@@ -1653,7 +1710,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a market buy order for 1 ETH
         let buy_order = Order {
@@ -1666,7 +1723,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         // Both orders should be fully executed
         assert_eq!(
@@ -1696,7 +1753,7 @@ mod tests {
             quantity: 1,
             timestamp: TimestampMs(0),
         };
-        orderbook.execute_order(sell_order).unwrap();
+        orderbook.execute_order(sell_order, &TX_CTX).unwrap();
 
         // Create a market buy order for 2 ETH
         let buy_order = Order {
@@ -1709,7 +1766,7 @@ mod tests {
             timestamp: TimestampMs(1),
         };
 
-        let events = orderbook.execute_order(buy_order).unwrap();
+        let events = orderbook.execute_order(buy_order, &TX_CTX).unwrap();
 
         assert_eq!(events.len(), 5);
         let executed_count = events
