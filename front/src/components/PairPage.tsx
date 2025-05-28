@@ -27,6 +27,8 @@ const PairPage: React.FC = () => {
   const [localTradingData, setLocalTradingData] = useState<TradingData | null>(null);
   // const { addPosition } = usePositions(); // Removed, positions are managed by PositionsContext
   const { state: appState, dispatch } = useAppContext();
+  const { walletAddress, currentUser } = appState; // Get walletAddress and currentUser from context
+  const [newUsername, setNewUsername] = useState<string>(""); // State for the input field
   const { addLocalOrder, removeLocalOrder, updateLocalOrder } = useOrderbookContext();
   const { refetchPositions } = usePositionsContext();
 
@@ -138,11 +140,26 @@ const PairPage: React.FC = () => {
     contract: formatContractAddress(contractAddress)
   };
 
+  const handleChangeUser = () => {
+    if (newUsername.trim() !== "") {
+      dispatch({ type: 'SET_CURRENT_USER', payload: newUsername.trim() });
+      setNewUsername(""); // Clear input after dispatching
+    }
+  };
+
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>HyLiquid - {assetPair}</h1>
+        <h1>HyLiquid - {assetPair} {walletAddress && (<span style={{ fontSize: '0.8rem', marginLeft: '10px', color: '#aaa' }}>{walletAddress}</span>)}</h1>
         <div className="header-actions">
+          <input 
+            type="text" 
+            value={newUsername} 
+            onChange={(e) => setNewUsername(e.target.value)} 
+            placeholder="Set username" 
+            style={{ marginRight: '8px', padding: '4px 6px', borderRadius: '4px', border: '1px solid #555' }}
+          />
+          <button onClick={handleChangeUser} style={{ marginRight: '8px' }}>Set User</button>
           <button onClick={() => navigate('/deposit')}>Deposit</button>
         </div>
       </header>

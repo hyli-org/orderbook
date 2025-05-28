@@ -14,6 +14,7 @@ interface AppState {
   orderbookFocus: OrderbookFocus; // Changed to OrderbookFocus type
   currentUser: string; // Added currentUser
   balances: { [currency: string]: number }; // Added balances
+  walletAddress: string; // Added walletAddress
   // Potentially add other global states like user preferences, theme, etc.
 }
 
@@ -26,7 +27,8 @@ type AppAction =
   | { type: 'SET_ORDERBOOK_FOCUS'; payload: OrderbookFocus } // Changed to OrderbookFocus type
   | { type: 'SET_INITIAL_STATE'; payload: Partial<AppState> } // For setting initial state from localStorage etc.
   | { type: 'SET_BALANCES'; payload: { [currency: string]: number } } // Added SET_BALANCES action
-  | { type: 'SET_CURRENT_USER'; payload: string }; // Added SET_CURRENT_USER action
+  | { type: 'SET_CURRENT_USER'; payload: string } // Added SET_CURRENT_USER action
+  | { type: 'SET_WALLET_ADDRESS'; payload: string }; // Added SET_WALLET_ADDRESS action
 
 
 // Create the context
@@ -43,8 +45,9 @@ const initialState: AppState = {
   positions: {}, // Initialized as an empty object
   orderbook: { bids: [], asks: [], spread: 0, spreadPercentage: 0 },
   orderbookFocus: 'all',
-  currentUser: 'user@orderbook', // Default user
+  currentUser: 'user@orderbook', // Default user is now user@orderbook
   balances: {}, // Initial empty balances
+  walletAddress: 'user@orderbook', // Initial wallet address matches currentUser
 };
 
 // Reducer
@@ -78,7 +81,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_BALANCES': // Handle SET_BALANCES
       return { ...state, balances: action.payload };
     case 'SET_CURRENT_USER': // Handle SET_CURRENT_USER
-      return { ...state, currentUser: action.payload, balances: {} }; // Reset balances on user change
+      // Payload is expected to be the raw username (e.g., "john")
+      const rawUsername = action.payload.split('@')[0];
+      const newCurrentUser = `${rawUsername}@orderbook`;
+      return {
+        ...state,
+        currentUser: newCurrentUser,
+        walletAddress: newCurrentUser, // Ensure walletAddress is also updated
+        balances: {}, // Reset balances on user change
+      };
+    case 'SET_WALLET_ADDRESS': // Handle SET_WALLET_ADDRESS
+      // This action might still be dispatched from elsewhere, but currentUser should be the source of truth.
+      // For now, let it update walletAddress independently, though ideally it aligns with currentUser.
+      // Or, this action could be removed if walletAddress is always derived from currentUser via SET_CURRENT_USER.
+      // Given the changes, SET_WALLET_ADDRESS should ideally not be called directly if currentUser is the master.
+      // However, to prevent breaking other potential usages, we'll keep its direct effect.
+      // But the primary update path is via SET_CURRENT_USER.
+      return { ...state, walletAddress: action.payload };
     default:
       // It's good practice to handle unknown actions, e.g., by throwing an error
       // or returning the current state if the action is not recognized.
@@ -93,46 +112,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   console.log('[AppProvider] Initial state after useReducer:', state); // Log initial state
 
   const fetchBalances = useCallback(async (user: string) => {
-    if (!user) return;
+    if (!user) {
+      console.log('[AppProvider.fetchBalances] User is not defined, skipping fetch.');
+      return;
+    }
+    console.log(`[AppProvider.fetchBalances] Starting to fetch balances for user: ${user}`);
     try {
       // Using standard fetch API as NodeApiHttpClient.get usage is unclear
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000'; // Fallback if VITE_NODE_BASE_URL is not set
       const fullUrl = `${baseUrl}/api/optimistic/balances/${user}`;
       
+      console.log(`[AppProvider.fetchBalances] Fetching from URL: ${fullUrl}`);
       const response = await fetch(fullUrl); // Standard fetch call
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`[AppProvider.fetchBalances] HTTP error! Status: ${response.status}, User: ${user}, Response: ${errorText}`);
+        throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
       }
       const data: { [currency: string]: number } = await response.json();
+      console.log(`[AppProvider.fetchBalances] Successfully fetched balances for user ${user}:`, data);
       dispatch({ type: 'SET_BALANCES', payload: data });
     } catch (error) {
-      console.error('Failed to fetch balances:', error);
-      dispatch({ type: 'SET_BALANCES', payload: {} });
+      console.error(`[AppProvider.fetchBalances] Failed to fetch balances for user ${user}:`, error);
+      dispatch({ type: 'SET_BALANCES', payload: {} }); // Set to empty on error
     }
   }, [dispatch]);
 
   useEffect(() => {
-    // Fetch balances for the initial current user
-    if (state.currentUser) {
-      fetchBalances(state.currentUser);
+    // Load initial state from localStorage
+    const storedPair = localStorage.getItem('appCurrentPair');
+    const storedUser = localStorage.getItem('appCurrentUser'); // Expected to be username@orderbook
+    // storedWalletAddress is not strictly needed for initialization if storedUser is the source of truth
+    // and reducer for SET_INITIAL_STATE or SET_CURRENT_USER syncs them.
+
+    const initialPayload: Partial<AppState> = {};
+    if (storedPair) {
+      initialPayload.currentPair = storedPair;
     }
-    // Log currentPair whenever currentUser or fetchBalances changes, to see its state then
+    if (storedUser) { // If appCurrentUser (username@orderbook) exists
+      initialPayload.currentUser = storedUser;
+      initialPayload.walletAddress = storedUser; // Ensure walletAddress is also set from storedUser
+    }
+    // If only storedWalletAddress exists (legacy or partial save), use it for both.
+    // This ensures that if appCurrentUser is missing, but appWalletAddress is there, we still load it.
+    else {
+        const storedWalletAddress = localStorage.getItem('appWalletAddress');
+        if (storedWalletAddress) {
+            initialPayload.currentUser = storedWalletAddress;
+            initialPayload.walletAddress = storedWalletAddress;
+        }
+    }
+
+    if (Object.keys(initialPayload).length > 0) {
+      dispatch({ type: 'SET_INITIAL_STATE', payload: initialPayload });
+    }
+  }, []);
+
+
+  useEffect(() => {
+    // This effect runs when state.currentUser changes.
+    if (state.currentUser) { // state.currentUser is now 'username@orderbook'
+      fetchBalances(state.currentUser); // Correctly passes 'username@orderbook'
+      
+      // Persist currentUser and walletAddress to localStorage.
+      // state.walletAddress is updated by the reducer in SET_CURRENT_USER or SET_INITIAL_STATE.
+      localStorage.setItem('appCurrentUser', state.currentUser);
+      localStorage.setItem('appWalletAddress', state.walletAddress); // Should be same as state.currentUser
+
+      // If walletAddress somehow diverged, ensure it's synced from currentUser.
+      // This is more of a safeguard; reducer for SET_CURRENT_USER should handle this primarily.
+      if (state.walletAddress !== state.currentUser) {
+        dispatch({ type: 'SET_WALLET_ADDRESS', payload: state.currentUser });
+      }
+    }
     console.log('[AppProvider useEffect - currentUser/fetchBalances] currentPair:', state.currentPair);
-  }, [state.currentUser, fetchBalances]);
+  }, [state.currentUser, fetchBalances]); // state.walletAddress removed from deps as it's driven by currentUser
 
 
-  // TODO: Consider adding a useEffect here to load initial state from localStorage
-  // for currentPair, etc., and dispatch a SET_INITIAL_STATE action.
-  // <<< IF YOU HAVE SUCH A useEffect, ADD LOGGING INSIDE IT TOO >>>
-  // Example:
-  // useEffect(() => {
-  //   const storedPair = localStorage.getItem('appCurrentPair');
-  //   console.log('[AppProvider localStorageEffect] Found storedPair:', storedPair);
-  //   if (storedPair) {
-  //     dispatch({ type: 'SET_PAIR', payload: storedPair });
-  //     console.log('[AppProvider localStorageEffect] Dispatched SET_PAIR with:', storedPair);
-  //   }
-  // }, []); // Empty dependency array means it runs once on mount
+  useEffect(() => {
+    // Persist currentPair to localStorage
+    if (state.currentPair) {
+      localStorage.setItem('appCurrentPair', state.currentPair);
+    }
+  }, [state.currentPair]);
 
 
   // Log the state right before rendering the provider's value
