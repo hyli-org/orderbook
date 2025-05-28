@@ -1,6 +1,5 @@
 import { BorshSchema, borshDeserialize, borshSerialize } from "borsher";
-import type { Blob, StructuredBlobData } from "hyli";
-import { structuredBlobDataSchema } from "hyli";
+import type { Blob } from "hyli";
 
 export type Unit = Record<string, never>;
 
@@ -159,7 +158,6 @@ export const createOrder = (
 
 export const cancelOrder = (
     order_id: string,
-    caller: number | null
 ): Blob => {
     const action: OrderbookAction = {
         Cancel: {
@@ -167,11 +165,6 @@ export const cancelOrder = (
         },
     };
 
-    const structured: StructuredBlobData<OrderbookAction> = {
-        caller: caller ? { 0: caller } : null,
-        callees: null,
-        parameters: action,
-    };
 
     const blob: Blob = {
         contract_name: "orderbook",

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import { deposit } from '../../models/Orderbook';
 import { nodeService } from '../../services/NodeService';
-import type { Blob, BlobTransaction, Identity } from 'hyli';
+import type { BlobTransaction, Identity } from 'hyli';
 import { useAppContext } from '../../contexts/AppContext';
 
 // Page Container

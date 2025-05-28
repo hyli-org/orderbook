@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { OrderbookHeader } from './OrderbookHeader';
 import { OrderbookRow } from './OrderbookRow';
 import { OrderbookSpread } from './OrderbookSpread';

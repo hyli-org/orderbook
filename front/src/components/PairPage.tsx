@@ -25,9 +25,8 @@ const PairPage: React.FC = () => {
   const { pairId } = useParams<{ pairId: string }>();
   const navigate = useNavigate();
   const [localTradingData, setLocalTradingData] = useState<TradingData | null>(null);
-  // const { addPosition } = usePositions(); // Removed, positions are managed by PositionsContext
   const { state: appState, dispatch } = useAppContext();
-  const { walletAddress, currentUser } = appState; // Get walletAddress and currentUser from context
+  const { walletAddress } = appState; // Get walletAddress from context
   const [newUsername, setNewUsername] = useState<string>(""); // State for the input field
   const { addLocalOrder, removeLocalOrder, updateLocalOrder } = useOrderbookContext();
   const { refetchPositions } = usePositionsContext();
@@ -95,9 +94,7 @@ const PairPage: React.FC = () => {
   }
 
   const { assetPair, historicalData, currentPrice, volume24h = 0, marketCap = 0, contractAddress } = localTradingData!;
-  const currentActivePair = appState.currentPair;
   
-  // const allPositions = Object.values(appState.positions).flat(); // Removed
 
   const lastCandle = historicalData.length > 0 ? historicalData[historicalData.length - 1] : null;
   const dailyChangeValue = lastCandle ? (lastCandle.close - lastCandle.open).toFixed(3) : "0.00";

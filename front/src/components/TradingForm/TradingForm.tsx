@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { theme } from '../../styles/theme';
 import type { Position } from '../../types/position'; // Import Position interface
@@ -221,7 +221,7 @@ const PercentageDisplay = styled.div`
   margin-bottom: 0.5rem;
 `;
 
-export const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, marketPrice }) => {
+export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
   const { state, fetchBalances } = useAppContext(); // Use AppContext
   const { currentUser, balances } = state;
   const { refetchPositions } = usePositionsContext(); // Get refetchPositions from context

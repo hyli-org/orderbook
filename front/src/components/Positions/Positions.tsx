@@ -318,7 +318,7 @@ interface EnhancedPositionForDisplay {
 export const Positions: React.FC<PositionsProps> = () => {
   const { positions, loading, error, refetchPositions } = usePositionsContext();
   const { state, fetchBalances } = useAppContext(); // Use AppContext for current user and balance updates
-  const { currentUser, balances } = state;
+  const { currentUser } = state;
 
   // Process positions to include market information and adapt to display structure
   const enhancedPositions: EnhancedPositionForDisplay[] = positions.map((orderData: UserPositionOrder) => {
@@ -351,7 +351,7 @@ export const Positions: React.FC<PositionsProps> = () => {
     try {
       console.log('Canceling order:', order.order_id);
       
-      const blob = cancelOrder(order.order_id, null); // caller is null for now
+      const blob = cancelOrder(order.order_id);
       
       const identity: Identity = currentUser as Identity;
       

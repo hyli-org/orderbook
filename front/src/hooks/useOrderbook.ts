@@ -1,11 +1,17 @@
 import type { Order, OrderbookState } from '../types/orderbook';
 import { useState, useMemo } from 'react';
 import type { OrderbookFocus } from '../components/Orderbook/types';
+import { OrderType } from '../models/Orderbook';
 
-export const generateMockOrder = (price: number, size: number): Order => ({
+export const generateMockOrder = (price: number, quantity: number): Order & { total: number } => ({
+  owner: 'user',
+  order_id: '1',
+  order_type: OrderType.Buy,
+  pair: ['BTC', 'USDC'],
+  timestamp: Date.now(),
   price,
-  size,
-  total: price * size,
+  quantity,
+  total: price * quantity,
 });
 
 export const generateMockOrderbook = (count: number = 10): OrderbookState => {
