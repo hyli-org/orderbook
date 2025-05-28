@@ -1,11 +1,21 @@
-import type { Order, OrderbookEvent } from '../types/orderbook';
+import type { Order } from '../types/orderbook';
 
 const WEBSOCKET_URL = import.meta.env.VITE_API_WS_URL || 'ws://localhost:3000/ws'; // Use env variable or fallback
+
+// Define the expected shape of the OrderUpdate data
+interface OrderUpdateData {
+  order_id: string;
+  remaining_quantity: number; 
+  pair: [string, string];
+}
 
 class OrderbookWsService {
   private ws: WebSocket | null = null;
   private static instance: OrderbookWsService;
   private orderCreatedCallbacks: Array<(order: Order) => void> = [];
+  private orderCancelledCallbacks: Array<(data: { order_id: string; pair: [string, string] }) => void> = [];
+  private orderExecutedCallbacks: Array<(data: { order_id: string; pair: [string, string] }) => void> = [];
+  private orderUpdatedCallbacks: Array<(data: OrderUpdateData) => void> = [];
 
   private constructor() {
     // Private constructor to ensure singleton
@@ -55,9 +65,48 @@ class OrderbookWsService {
             const order = directPayload.OrderCreated.order as Order;
             this.orderCreatedCallbacks.forEach(callback => callback(order));
             // console.log("Successfully processed OrderCreated event:", order);
+          } else if ("OrderCancelled" in directPayload && 
+                     directPayload.OrderCancelled && 
+                     typeof directPayload.OrderCancelled === 'object' && 
+                     directPayload.OrderCancelled.order_id && 
+                     directPayload.OrderCancelled.pair) {
+            
+            const cancelData = {
+              order_id: directPayload.OrderCancelled.order_id as string,
+              pair: directPayload.OrderCancelled.pair as [string, string]
+            };
+            this.orderCancelledCallbacks.forEach(callback => callback(cancelData));
+            console.log("Successfully processed OrderCancelled event:", cancelData);
+          } else if ("OrderExecuted" in directPayload &&
+                     directPayload.OrderExecuted &&
+                     typeof directPayload.OrderExecuted === 'object' &&
+                     directPayload.OrderExecuted.order_id &&
+                     directPayload.OrderExecuted.pair) {
+
+            const executedData = {
+              order_id: directPayload.OrderExecuted.order_id as string,
+              pair: directPayload.OrderExecuted.pair as [string, string]
+            };
+            this.orderExecutedCallbacks.forEach(callback => callback(executedData));
+            console.log("Successfully processed OrderExecuted event:", executedData);
+          } else if ("OrderUpdate" in directPayload &&
+                     directPayload.OrderUpdate &&
+                     typeof directPayload.OrderUpdate === 'object' &&
+                     directPayload.OrderUpdate.order_id &&
+                     typeof directPayload.OrderUpdate.remaining_quantity === 'number' && // Check type of remaining_quantity
+                     directPayload.OrderUpdate.pair) {
+            
+            const updateData: OrderUpdateData = {
+              order_id: directPayload.OrderUpdate.order_id as string,
+              remaining_quantity: directPayload.OrderUpdate.remaining_quantity as number,
+              pair: directPayload.OrderUpdate.pair as [string, string]
+            };
+            this.orderUpdatedCallbacks.forEach(callback => callback(updateData));
+            console.log("Successfully processed OrderUpdate event:", updateData);
+
           } else {
-            // Log other types of valid object messages if not OrderCreated with the expected structure
-            // console.log("Received other object message type or malformed OrderCreated:", directPayload);
+            // Log other types of valid object messages if not OrderCreated/OrderCancelled with the expected structure
+            // console.log("Received other object message type or malformed event:", directPayload);
           }
         } else {
           console.error("Parsed WebSocket message, but it is not a recognizable object:", directPayload);
@@ -93,6 +142,28 @@ class OrderbookWsService {
     // Return an unsubscribe function
     return () => {
       this.orderCreatedCallbacks = this.orderCreatedCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
+  public onOrderCancelled(callback: (data: { order_id: string; pair: [string, string] }) => void): () => void {
+    this.orderCancelledCallbacks.push(callback);
+    // Return an unsubscribe function
+    return () => {
+      this.orderCancelledCallbacks = this.orderCancelledCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
+  public onOrderExecuted(callback: (data: { order_id: string; pair: [string, string] }) => void): () => void {
+    this.orderExecutedCallbacks.push(callback);
+    return () => {
+      this.orderExecutedCallbacks = this.orderExecutedCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
+  public onOrderUpdated(callback: (data: OrderUpdateData) => void): () => void {
+    this.orderUpdatedCallbacks.push(callback);
+    return () => {
+      this.orderUpdatedCallbacks = this.orderUpdatedCallbacks.filter(cb => cb !== callback);
     };
   }
 

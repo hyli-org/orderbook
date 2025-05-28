@@ -4,6 +4,7 @@ import { PairPage } from './components'; // Assuming PairPage is in './component
 import DepositForm from './components/DepositForm/DepositForm'; // Import DepositForm
 import { AppProvider, useAppContext } from './contexts/AppContext'; // Import AppProvider and useAppContext
 import { OrderbookProvider } from './contexts/OrderbookContext'; // Import OrderbookProvider
+import { PositionsProvider } from './contexts/PositionsContext'; // Import PositionsProvider
 import './App.css';
 import { useEffect } from 'react'; // Import useEffect
 import { DEFAULT_PAIR_ID } from './constants/assets'; // Import default pair ID
@@ -42,13 +43,15 @@ function App() {
   return (
     <AppProvider>
       <OrderbookProvider>
-        <AppInitializer>
-          <Routes>
-            <Route path="/" element={<Navigate to={`/pair/${lastVisitedPairUrl}`} replace />} />
-            <Route path="/pair/:pairId" element={<PairPage />} />
-            <Route path="/deposit" element={<DepositForm />} />
-          </Routes>
-        </AppInitializer>
+        <PositionsProvider>
+          <AppInitializer>
+            <Routes>
+              <Route path="/" element={<Navigate to={`/pair/${lastVisitedPairUrl}`} replace />} />
+              <Route path="/pair/:pairId" element={<PairPage />} />
+              <Route path="/deposit" element={<DepositForm />} />
+            </Routes>
+          </AppInitializer>
+        </PositionsProvider>
       </OrderbookProvider>
     </AppProvider>
   );

@@ -106,7 +106,37 @@ export const useOrderbookManager = (pairString: string | null) => {
     });
   }, []); // No dependencies needed for this purely state-updating function
 
-  // TODO: Implement updateLocalOrder and removeLocalOrder if needed, similar to addLocalOrder
+  // Function to remove an order locally by order_id
+  const removeLocalOrder = useCallback((orderId: string) => {
+    setOrderbook(prevOrderbook => {
+      const updatedBids = prevOrderbook.bids.filter(order => order.order_id !== orderId);
+      const updatedAsks = prevOrderbook.asks.filter(order => order.order_id !== orderId);
+      
+      const { spread, spreadPercentage } = calculateSpread(updatedBids, updatedAsks);
+      return { ...prevOrderbook, bids: updatedBids, asks: updatedAsks, spread, spreadPercentage };
+    });
+  }, []);
+
+  // Function to update an order's quantity locally by order_id
+  const updateLocalOrder = useCallback((orderId: string, newQuantity: number) => {
+    setOrderbook(prevOrderbook => {
+      const updateOrderList = (orders: Order[]): Order[] => 
+        orders.map(order => 
+          order.order_id === orderId ? { ...order, quantity: newQuantity } : order
+        ).filter(order => order.quantity > 0); // Remove if quantity becomes zero or less
+
+      const updatedBids = updateOrderList([...prevOrderbook.bids]);
+      const updatedAsks = updateOrderList([...prevOrderbook.asks]);
+
+      // Re-sort as quantity change might affect price-time priority if we were using it, 
+      // but primarily to ensure lists are consistently processed for spread calculation.
+      updatedBids.sort((a, b) => b.price - a.price);
+      updatedAsks.sort((a, b) => a.price - b.price);
+
+      const { spread, spreadPercentage } = calculateSpread(updatedBids, updatedAsks);
+      return { ...prevOrderbook, bids: updatedBids, asks: updatedAsks, spread, spreadPercentage };
+    });
+  }, []);
 
   return {
     orderbook,
@@ -114,5 +144,7 @@ export const useOrderbookManager = (pairString: string | null) => {
     error,
     refetch,
     addLocalOrder, // Expose the function to add orders locally
+    removeLocalOrder, // Expose the function to remove orders locally
+    updateLocalOrder, // Expose the function to update orders locally
   };
 };

@@ -4,6 +4,10 @@ import { theme } from '../../styles/theme';
 // import type { Position } from '../../types/position'; // No longer using local Position type
 import { usePositionsContext } from '../../contexts/PositionsContext'; // Import context 
 import type { UserPositionOrder } from '../../contexts/PositionsContext'; // Import type separately
+import { nodeService } from '../../services/NodeService'; // Added for cancel order
+import { cancelOrder } from '../../models/Orderbook'; // Added for cancel order
+import type { BlobTransaction, Identity } from 'hyli'; // Added for cancel order
+import { useAppContext } from '../../contexts/AppContext'; // Added for current user
 
 // The UserPositionOrder type is imported from '../../contexts/PositionsContext'
 // It should include: pairName, asset, quantity, price
@@ -313,6 +317,8 @@ interface EnhancedPositionForDisplay {
 
 export const Positions: React.FC<PositionsProps> = () => {
   const { positions, loading, error, refetchPositions } = usePositionsContext();
+  const { state, fetchBalances } = useAppContext(); // Use AppContext for current user and balance updates
+  const { currentUser, balances } = state;
 
   // Process positions to include market information and adapt to display structure
   const enhancedPositions: EnhancedPositionForDisplay[] = positions.map((orderData: UserPositionOrder) => {
@@ -334,6 +340,43 @@ export const Positions: React.FC<PositionsProps> = () => {
       originalOrderData: orderData,
     };
   });
+
+  // Handle cancel order functionality
+  const handleCancelOrder = async (order: UserPositionOrder) => {
+    if (!currentUser) {
+      console.error("No current user available for canceling order");
+      return;
+    }
+
+    try {
+      console.log('Canceling order:', order.order_id);
+      
+      const blob = cancelOrder(order.order_id, null); // caller is null for now
+      
+      const identity: Identity = currentUser as Identity;
+      
+      const blobTx: BlobTransaction = {
+        identity,
+        blobs: [blob],
+      };
+
+      console.log('Sending cancel transaction:', blobTx);
+      const blobTxHash = await nodeService.client.sendBlobTx(blobTx);
+      console.log('Cancel transaction sent, hash:', blobTxHash);
+      
+      // Fetch updated balances after successful cancellation
+      if (currentUser) {
+        await fetchBalances(currentUser);
+      }
+
+      // Refetch positions after successful cancellation and balance update
+      refetchPositions();
+      
+    } catch (error) {
+      console.error('Failed to cancel order:', error);
+      // Handle error appropriately in the UI
+    }
+  };
 
   if (loading) {
     return (
@@ -403,7 +446,7 @@ export const Positions: React.FC<PositionsProps> = () => {
                 <PriceCell>{position.entryPrice.toFixed(2)}</PriceCell>
                 <PriceCell>{position.markPrice.toFixed(2)}</PriceCell>
                 <ActionsCell>
-                  <CloseButton>Close</CloseButton>
+                  <CloseButton onClick={() => handleCancelOrder(position.originalOrderData)}>Close</CloseButton>
                 </ActionsCell>
               </PositionRow>
             ))}

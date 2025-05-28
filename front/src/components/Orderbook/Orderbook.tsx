@@ -33,18 +33,53 @@ export const Orderbook: React.FC<OrderbookComponentProps> = ({
   console.log("App state", state);
   const { bids, asks, spread, spreadPercentage } = orderbook;
 
-  // Define a new type for orders that includes the calculated total
-  type OrderWithTotal = Order & { total: number };
+  // Define a new type for aggregated orders that includes the calculated total
+  type AggregatedOrder = Order & { total: number; aggregatedQuantity: number; orderCount: number };
 
-  const calculateCumulativeTotal = (orders: Order[]): OrderWithTotal[] => {
+  // Function to group orders by price and aggregate quantities
+  const groupOrdersByPrice = (orders: Order[]): Order[] => {
+    const priceMap = new Map<number, Order[]>();
+    
+    // Group orders by price
+    orders.forEach(order => {
+      const price = order.price;
+      if (!priceMap.has(price)) {
+        priceMap.set(price, []);
+      }
+      priceMap.get(price)!.push(order);
+    });
+
+    // Aggregate orders at each price level
+    const aggregatedOrders: Order[] = [];
+    priceMap.forEach((ordersAtPrice) => {
+      const totalQuantity = ordersAtPrice.reduce((sum, order) => sum + order.quantity, 0);
+      
+      // Use the first order as the base and update quantity to be the aggregated amount
+      const aggregatedOrder: Order = {
+        ...ordersAtPrice[0], // Take the first order as the base
+        quantity: totalQuantity, // Set quantity to the sum of all orders at this price
+      };
+      
+      aggregatedOrders.push(aggregatedOrder);
+    });
+
+    return aggregatedOrders;
+  };
+
+  const calculateCumulativeTotal = (orders: Order[]): AggregatedOrder[] => {
     let cumulativeTotal = 0;
     return orders.map(order => {
       cumulativeTotal += order.quantity;
-      return { ...order, total: cumulativeTotal };
+      return { 
+        ...order, 
+        total: cumulativeTotal,
+        aggregatedQuantity: order.quantity,
+        orderCount: 1 // This could be enhanced to track actual order count if needed
+      };
     });
   };
 
-  const getProcessedOrders = (orders: OrderWithTotal[], isAsks: boolean, count: number): OrderWithTotal[] => {
+  const getProcessedOrders = (orders: AggregatedOrder[], isAsks: boolean, count: number): AggregatedOrder[] => {
     let processed = isAsks ? orders.slice(0, count) : orders.slice(0, count);
     // Asks are typically displayed with the lowest price (closest to spread) at the bottom,
     // and cumulative total increasing upwards. The raw asks array is sorted ascending by price.
@@ -58,12 +93,16 @@ export const Orderbook: React.FC<OrderbookComponentProps> = ({
   };
 
   const displayedAsks = useMemo(() => {
-    const asksWithTotal = calculateCumulativeTotal(asks);
+    // First group orders by price, then calculate cumulative totals
+    const groupedAsks = groupOrdersByPrice(asks);
+    const asksWithTotal = calculateCumulativeTotal(groupedAsks);
     return getProcessedOrders(asksWithTotal, true, maxRows);
   }, [asks, maxRows]);
 
   const displayedBids = useMemo(() => {
-    const bidsWithTotal = calculateCumulativeTotal(bids);
+    // First group orders by price, then calculate cumulative totals
+    const groupedBids = groupOrdersByPrice(bids);
+    const bidsWithTotal = calculateCumulativeTotal(groupedBids);
     // Bids are sorted descending. `getProcessedOrders` takes the top `maxRows`.
     // Cumulative total for bids should increase as price decreases (further from spread).
     return getProcessedOrders(bidsWithTotal, false, maxRows);
@@ -107,7 +146,7 @@ export const Orderbook: React.FC<OrderbookComponentProps> = ({
         <div className="asks-container">
           {displayedAsks.map((order) => (
             <OrderbookRow
-              key={`${order.price}-${order.quantity}-ask`}
+              key={`${order.price}-aggregated-ask`}
               order={order}
               type="ask"
               maxTotal={maxTotal}
@@ -128,7 +167,7 @@ export const Orderbook: React.FC<OrderbookComponentProps> = ({
         <div className="bids-container">
           {displayedBids.map((order) => (
             <OrderbookRow
-              key={`${order.price}-${order.quantity}-bid`}
+              key={`${order.price}-aggregated-bid`}
               order={order}
               type="bid"
               maxTotal={maxTotal}

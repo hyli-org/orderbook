@@ -8,6 +8,7 @@ interface ApiOrder {
   price: number;
   quantity: number;
   order_type: "Buy" | "Sell"; // Add order_type field from API
+  order_id: string; // Required for canceling orders
   // id: string; // Example: if orders have IDs
   // timestamp: number; // Example: if orders have timestamps
 }
@@ -20,6 +21,7 @@ export interface UserPositionOrder {
   quantity: number;
   price: number;    // Order price, will be used as entryPrice
   order_type: "Buy" | "Sell"; // Add order_type field
+  order_id: string; // Required for canceling orders
   // Include other raw fields if Positions.tsx might use them or if they are part of Position type
   user?: string; 
 }
@@ -75,6 +77,7 @@ export const PositionsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         price: order.price,
         quantity: order.quantity,
         order_type: order.order_type,
+        order_id: order.order_id,
         user: order.user,
       }));
 

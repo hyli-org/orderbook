@@ -5,7 +5,7 @@ import { Orderbook, CandleChart, Positions, TradingForm, MarketInfoBanner } from
 // import { usePositions } from '../hooks/usePositions'; // No longer needed
 import { useAppContext } from '../contexts/AppContext';
 import { useOrderbookContext } from '../contexts/OrderbookContext';
-import { PositionsProvider } from '../contexts/PositionsContext'; // Import PositionsProvider
+import { usePositionsContext } from '../contexts/PositionsContext';
 import OrderbookWsService from '../services/OrderbookWsService';
 import type { Order } from '../types/orderbook';
 import { generateMockTradingData } from '../utils/mockData';
@@ -27,7 +27,8 @@ const PairPage: React.FC = () => {
   const [localTradingData, setLocalTradingData] = useState<TradingData | null>(null);
   // const { addPosition } = usePositions(); // Removed, positions are managed by PositionsContext
   const { state: appState, dispatch } = useAppContext();
-  const { addLocalOrder } = useOrderbookContext();
+  const { addLocalOrder, removeLocalOrder, updateLocalOrder } = useOrderbookContext();
+  const { refetchPositions } = usePositionsContext();
 
   useEffect(() => {
     const pairToLoad = pairId ? pairId.replace('-', '/') : appState.currentPair;
@@ -54,15 +55,38 @@ const PairPage: React.FC = () => {
   useEffect(() => {
     if (pairId) {
       OrderbookWsService.connect(pairId);
-      const unsubscribe = OrderbookWsService.onOrderCreated((order: Order) => {
+      
+      const unsubscribeOrderCreated = OrderbookWsService.onOrderCreated((order: Order) => {
         console.log('Received OrderCreated event for pair:', pairId, order);
         addLocalOrder(order);
       });
+      
+      const unsubscribeOrderCancelled = OrderbookWsService.onOrderCancelled((cancelData) => {
+        console.log('Received OrderCancelled event for pair:', pairId, cancelData);
+        removeLocalOrder(cancelData.order_id);
+      });
+
+      const unsubscribeOrderExecuted = OrderbookWsService.onOrderExecuted((executedData) => {
+        console.log('Received OrderExecuted event for pair:', pairId, executedData);
+        removeLocalOrder(executedData.order_id);
+        refetchPositions();
+      });
+
+      const unsubscribeOrderUpdated = OrderbookWsService.onOrderUpdated((updateData) => {
+        console.log('Received OrderUpdate event for pair:', pairId, updateData);
+        updateLocalOrder(updateData.order_id, updateData.remaining_quantity);
+        // Optional: refetchPositions if an order update could affect overall position calculation
+        // refetchPositions(); 
+      });
+      
       return () => {
-        unsubscribe();
+        unsubscribeOrderCreated();
+        unsubscribeOrderCancelled();
+        unsubscribeOrderExecuted();
+        unsubscribeOrderUpdated(); // Unsubscribe from order updates
       };
     }
-  }, [pairId, addLocalOrder]);
+  }, [pairId, addLocalOrder, removeLocalOrder, updateLocalOrder, refetchPositions]); // Added updateLocalOrder to dependencies
 
   if (!localTradingData || !appState.currentPair) {
     return <div>Loading trading data for {pairId}...</div>;
@@ -115,58 +139,56 @@ const PairPage: React.FC = () => {
   };
 
   return (
-    <PositionsProvider> { /* Wrap with PositionsProvider */ }
-      <div className="app-container">
-        <header className="app-header">
-          <h1>HyLiquid - {assetPair}</h1>
-          <div className="header-actions">
-            <button onClick={() => navigate('/deposit')}>Deposit</button>
-          </div>
-        </header>
-        
-        <main className="app-main">
-          <div className="trading-interface">
-            <div className="market-section">
-              <div className="chart-orderbook-container">
-                <div className="chart-section">
-                  <MarketInfoBanner 
-                    price={marketBannerData.price}
-                    change={marketBannerData.change}
-                    volume={marketBannerData.volume}
-                    marketCap={marketBannerData.marketCap}
-                    contract={marketBannerData.contract}
-                  />
-                  <div className="chart-container">
-                    <CandleChart candleData={historicalData} />
-                  </div>
-                </div>
-                
-                <div className="orderbook-container">
-                  <Orderbook 
-                    showHeader={true}
-                    showSpread={true}
-                  />
+    <div className="app-container">
+      <header className="app-header">
+        <h1>HyLiquid - {assetPair}</h1>
+        <div className="header-actions">
+          <button onClick={() => navigate('/deposit')}>Deposit</button>
+        </div>
+      </header>
+      
+      <main className="app-main">
+        <div className="trading-interface">
+          <div className="market-section">
+            <div className="chart-orderbook-container">
+              <div className="chart-section">
+                <MarketInfoBanner 
+                  price={marketBannerData.price}
+                  change={marketBannerData.change}
+                  volume={marketBannerData.volume}
+                  marketCap={marketBannerData.marketCap}
+                  contract={marketBannerData.contract}
+                />
+                <div className="chart-container">
+                  <CandleChart candleData={historicalData} />
                 </div>
               </div>
               
-              <div className="positions-container">
-                {/* Removed positions prop */}
-                <Positions /> 
-              </div>
-            </div>
-
-            <div className="trading-form-section">
-              <div className="spot-trading-container">
-                <TradingForm 
-                  // onSubmit={(newPosition) => addPosition(currentActivePair, newPosition)} // Removed addPosition call
-                  marketPrice={currentPrice}
+              <div className="orderbook-container">
+                <Orderbook 
+                  showHeader={true}
+                  showSpread={true}
                 />
               </div>
             </div>
+            
+            <div className="positions-container">
+              {/* Removed positions prop */}
+              <Positions /> 
+            </div>
           </div>
-        </main>
-      </div>
-    </PositionsProvider>
+
+          <div className="trading-form-section">
+            <div className="spot-trading-container">
+              <TradingForm 
+                // onSubmit={(newPosition) => addPosition(currentActivePair, newPosition)} // Removed addPosition call
+                marketPrice={currentPrice}
+              />
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 };
 

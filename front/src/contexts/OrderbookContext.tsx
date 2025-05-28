@@ -9,6 +9,8 @@ interface OrderbookContextType {
   error: string | null;
   refetch: () => void;
   addLocalOrder: (order: Order) => void;
+  removeLocalOrder: (orderId: string) => void;
+  updateLocalOrder: (orderId: string, newQuantity: number) => void;
 }
 
 const OrderbookContext = createContext<OrderbookContextType | undefined>(undefined);
@@ -24,6 +26,8 @@ export const OrderbookProvider: React.FC<{ children: ReactNode }> = ({ children 
     error: manager.error,
     refetch: manager.refetch,
     addLocalOrder: manager.addLocalOrder,
+    removeLocalOrder: manager.removeLocalOrder,
+    updateLocalOrder: manager.updateLocalOrder,
   };
 
   return (
