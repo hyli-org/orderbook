@@ -1802,4 +1802,39 @@ mod tests {
         assert_eq!(*orderbook_balances.get("ETH").unwrap_or(&0), 0); // orderbook is empty
         assert_eq!(*orderbook_balances.get("USD").unwrap_or(&0), 0); // orderbook is empty
     }
+
+    #[test_log::test]
+    fn test_order_execution_blocked_after_recent_deposit() {
+        let (eth_user, _, mut orderbook) = setup();
+        
+        // Set a more recent deposit block height for eth_user
+        *orderbook.get_latest_deposit_mut(&eth_user, "ETH") = BlockHeight(4);
+
+        // Try to create a sell order when deposit was too recent
+        let sell_order = Order {
+            owner: eth_user.clone(),
+            order_id: "sell1".to_string(), 
+            order_type: OrderType::Sell,
+            price: Some(2000),
+            pair: ("ETH".to_string(), "USD".to_string()),
+            quantity: 1,
+            timestamp: TimestampMs(0),
+        };
+
+        // Execute order with tx_ctx at block height 6 (< deposit block + 5)
+        let result = orderbook.execute_order(sell_order, &TX_CTX);
+
+        // Should fail because not enough blocks have passed since deposit
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("too soon after the last deposit"));
+        assert!(err.contains("5 blocks are required"));
+
+        // Check no balances were modified
+        let eth_user_eth = orderbook.balances.get(&eth_user).unwrap().get("ETH").unwrap();
+        assert_eq!(*eth_user_eth, 10); // Original balance unchanged
+
+        // Check no orders were created
+        assert_eq!(orderbook.orders.len(), 0);
+    }
 }
