@@ -7,8 +7,8 @@ use hyle_modules::{
     modules::Module,
 };
 use sdk::{
-    BlobTransaction, Calldata, ContractName, Hashed, HyleOutput, LaneId, MempoolStatusEvent,
-    NodeStateEvent, TransactionData, TxContext, TxHash,
+    BlobTransaction, BlockHeight, Calldata, ContractName, Hashed, HyleOutput, LaneId,
+    MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash,
 };
 use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -145,6 +145,7 @@ impl BorshSerialize for ContractBox {
 #[derive(BorshSerialize)]
 pub struct RollupExecutorStore {
     validator_lane_id: LaneId,
+    block_height: BlockHeight,
     unsettled_txs: Vec<(BlobTransaction, TxContext)>,
     contracts: HashMap<ContractName, ContractBox>,
     state_history: HashMap<ContractName, Vec<(TxHash, ContractBox)>>,
@@ -153,6 +154,7 @@ pub struct RollupExecutorStore {
 #[derive(Default, BorshDeserialize)]
 pub struct DeserRollupExecutorStore {
     validator_lane_id: LaneId,
+    block_height: BlockHeight,
     unsettled_txs: Vec<(BlobTransaction, TxContext)>,
     contracts: HashMap<ContractName, Vec<u8>>,
     state_history: HashMap<ContractName, Vec<(TxHash, Vec<u8>)>>,
@@ -206,6 +208,7 @@ impl Module for RollupExecutor {
                     .map(|k| (k.clone(), Vec::new()))
                     .collect();
                 RollupExecutorStore {
+                    block_height: BlockHeight(0),
                     contracts: ctx.initial_contracts,
                     state_history,
                     unsettled_txs: Vec::new(),
@@ -271,6 +274,7 @@ impl RollupExecutor {
                     self.bus
                         .send(RollupExecutorEvent::RevertedTx(blob_tx, contract_states))?;
                 }
+                self.block_height = block.block_height;
                 Ok(())
             }
         }
@@ -281,6 +285,7 @@ impl RollupExecutor {
             MempoolStatusEvent::WaitingDissemination { tx, .. } => {
                 let tx_ctx = Some(TxContext {
                     lane_id: self.validator_lane_id.clone(),
+                    block_height: self.block_height,
                     ..Default::default()
                 });
                 if let TransactionData::Blob(blob_tx) = tx.transaction_data {
@@ -332,6 +337,7 @@ impl RollupExecutorStore {
             .collect();
         Self {
             validator_lane_id: deser_store.validator_lane_id,
+            block_height: deser_store.block_height,
             unsettled_txs: deser_store.unsettled_txs,
             contracts,
             state_history,
