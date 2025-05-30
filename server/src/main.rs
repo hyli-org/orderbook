@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
         IndexerApiHttpClient::new(config.indexer_url.clone()).context("build indexer client")?,
     );
 
-    let local_client = ProverClient::builder().mock().build();
+    let local_client = ProverClient::builder().cpu().build();
     let (pk, _) = local_client.setup(ORDERBOOK_ELF);
 
     info!("Building Proving Key");

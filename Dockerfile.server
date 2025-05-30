@@ -11,7 +11,7 @@ COPY ./elf ./elf
 COPY Cargo.toml . 
 COPY Cargo.lock .
 
-RUN cargo build --bin server
+RUN cargo build --bin server --release
 
 # RUNNER
 FROM rust:latest
