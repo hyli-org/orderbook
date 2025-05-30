@@ -17,15 +17,18 @@ use hyle_modules::{
     },
 };
 use orderbook::{Orderbook, OrderbookEvent};
-use sdk::{hyle_model_utils::TimestampMs, ContractName};
+use sdk::{hyle_model_utils::TimestampMs, ContractName, Hashed};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
+use tracing::debug;
 
 use crate::rollup_executor::RollupExecutorEvent;
 
 pub struct OrderbookModule {
     bus: OrderbookModuleBusClient,
+    orderbook_cn: ContractName,
+    contract: Arc<RwLock<Orderbook>>,
 }
 
 pub struct OrderbookModuleCtx {
@@ -100,7 +103,11 @@ impl Module for OrderbookModule {
         }
         let bus = OrderbookModuleBusClient::new_from_bus(bus.new_handle()).await;
 
-        Ok(OrderbookModule { bus })
+        Ok(OrderbookModule {
+            bus,
+            contract,
+            orderbook_cn: ctx.orderbook_cn.clone(),
+        })
     }
 
     async fn run(&mut self) -> Result<()> {
@@ -120,9 +127,24 @@ impl Module for OrderbookModule {
 impl OrderbookModule {
     async fn handle_rollup_executor_event(&mut self, event: RollupExecutorEvent) -> Result<()> {
         match event {
-            RollupExecutorEvent::TxExecutionSuccess(_, hyle_outputs) => {
+            RollupExecutorEvent::TxExecutionSuccess(blob_tx, contracts, hyle_outputs) => {
                 let mut events = vec![];
                 for hyle_output in hyle_outputs {
+                    if !hyle_output.success {
+                        debug!(
+                            "One of HyleOutput's of tx {} was not successful: {:?}",
+                            blob_tx.hashed(),
+                            String::from_utf8_lossy(&hyle_output.program_outputs)
+                        );
+                        self.bus.send(WsTopicMessage {
+                            topic: blob_tx.identity.to_string(),
+                            message: format!(
+                                "Transaction failed: {}",
+                                String::from_utf8_lossy(&hyle_output.program_outputs)
+                            ),
+                        })?;
+                        continue;
+                    }
                     let evts: Vec<OrderbookEvent> = borsh::from_slice(&hyle_output.program_outputs)
                         .expect("output comes from contract, should always be valid");
 
@@ -132,20 +154,18 @@ impl OrderbookModule {
                 }
 
                 // Update contract state for optimistic RestAPI
-                // TODO: il faudra retirer l'indexer de l'app, et le mettre direct dans le module RollupExecutor
-                // TODO: cela permettra de ne pas avoir à envoyer le state de l'orderbook à chaque transaction successful
-                // {
-                //     if let Some(orderbook_contract) = contracts
-                //         .iter()
-                //         .find(|(contract_name, _)| contract_name == &self.orderbook_cn)
-                //         .map(|(_, state)| state.clone())
-                //         .expect("Orderbook contract not found")
-                //         .downcast::<Orderbook>()
-                //     {
-                //         let mut contract_guard = self.contract.write().await;
-                //         *contract_guard = orderbook_contract.clone();
-                //     }
-                // }
+                {
+                    if let Some(orderbook_contract) = contracts
+                        .iter()
+                        .find(|(contract_name, _)| contract_name == &self.orderbook_cn)
+                        .map(|(_, state)| state.clone())
+                        .expect("Orderbook contract not found")
+                        .downcast::<Orderbook>()
+                    {
+                        let mut contract_guard = self.contract.write().await;
+                        *contract_guard = orderbook_contract.clone();
+                    }
+                }
 
                 // Send events to all clients
                 for event in events {
@@ -186,17 +206,8 @@ impl OrderbookModule {
                 }
                 Ok(())
             }
-            RollupExecutorEvent::Rollback => {
-                // Handle reverted transactions
-                // We would probably just want to notify clients about the failure
+            RollupExecutorEvent::RevertedTx(_, _) => {
                 todo!("Handle reverted transactions");
-            }
-            RollupExecutorEvent::FailedTx(identity, tx_hash, message) => {
-                self.bus.send(WsTopicMessage {
-                    topic: identity.to_string(),
-                    message: format!("Transaction {} failed: {}", tx_hash, message),
-                })?;
-                Ok(())
             }
         }
     }
