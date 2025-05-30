@@ -27,7 +27,7 @@ use server::{
 };
 use sp1_sdk::{Prover, ProverClient};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 use tracing::error;
@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
 
-    let initial_contracts = HashMap::from([(
+    let initial_contracts = BTreeMap::from([(
         args.orderbook_cn.clone().into(),
         ContractBox::new(default_state.clone()),
     )]);
@@ -128,6 +128,7 @@ async fn main() -> Result<()> {
             data_directory: config.data_directory.clone(),
             initial_contracts,
             validator_lane_id,
+            watched_contracts: BTreeSet::from([args.orderbook_cn.clone().into()]),
             contract_deserializer: |state: Vec<u8>, contract_name: &ContractName| {
                 match contract_name.0.as_str() {
                     "orderbook" => ContractBox::new(

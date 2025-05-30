@@ -8,6 +8,8 @@ use sdk::{hyle_model_utils::TimestampMs, BlockHeight, ContractName, LaneId, RunR
 pub mod client;
 #[cfg(feature = "client")]
 pub mod indexer;
+#[cfg(feature = "client")]
+pub mod optimistic_commitments;
 
 impl sdk::ZkContract for Orderbook {
     /// Entry point of the contract's logic

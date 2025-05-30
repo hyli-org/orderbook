@@ -26,6 +26,7 @@ use crate::rollup_executor::RollupExecutorEvent;
 
 pub struct OrderbookModule {
     bus: OrderbookModuleBusClient,
+    orderbook_cn: ContractName,
 }
 
 pub struct OrderbookModuleCtx {
@@ -100,7 +101,10 @@ impl Module for OrderbookModule {
         }
         let bus = OrderbookModuleBusClient::new_from_bus(bus.new_handle()).await;
 
-        Ok(OrderbookModule { bus })
+        Ok(OrderbookModule {
+            bus,
+            orderbook_cn: ctx.orderbook_cn.clone(),
+        })
     }
 
     async fn run(&mut self) -> Result<()> {
@@ -121,8 +125,12 @@ impl OrderbookModule {
     async fn handle_rollup_executor_event(&mut self, event: RollupExecutorEvent) -> Result<()> {
         match event {
             RollupExecutorEvent::TxExecutionSuccess(_, hyle_outputs) => {
+                tracing::error!("received TxExecutionSuccess");
                 let mut events = vec![];
-                for hyle_output in hyle_outputs {
+                for (hyle_output, contract_name) in hyle_outputs {
+                    if contract_name != self.orderbook_cn {
+                        continue;
+                    }
                     let evts: Vec<OrderbookEvent> = borsh::from_slice(&hyle_output.program_outputs)
                         .expect("output comes from contract, should always be valid");
 
@@ -148,6 +156,7 @@ impl OrderbookModule {
                 // }
 
                 // Send events to all clients
+                tracing::debug!("Sending events: {:?}", events);
                 for event in events {
                     let event_clone = event.clone();
                     match &event {
@@ -187,11 +196,13 @@ impl OrderbookModule {
                 Ok(())
             }
             RollupExecutorEvent::Rollback => {
+                tracing::error!("received TxExecutionSuccess");
                 // Handle reverted transactions
                 // We would probably just want to notify clients about the failure
                 todo!("Handle reverted transactions");
             }
             RollupExecutorEvent::FailedTx(identity, tx_hash, message) => {
+                tracing::error!("received TxExecutionSuccess");
                 self.bus.send(WsTopicMessage {
                     topic: identity.to_string(),
                     message: format!("Transaction {} failed: {}", tx_hash, message),
