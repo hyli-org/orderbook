@@ -135,6 +135,10 @@ async fn main() -> Result<()> {
                         borsh::from_slice::<Orderbook>(&state)
                             .expect("Deserializing orderbook state"),
                     ),
+                    "wallet" => ContractBox::new(
+                        borsh::from_slice::<wallet::Wallet>(&state)
+                            .expect("Deserializing orderbook state"),
+                    ),
                     _ => panic!("Unknown contract name: {}", contract_name.0),
                 }
             },

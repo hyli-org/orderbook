@@ -1,6 +1,6 @@
 use borsh::{io::Error, BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use sdk::{hyle_model_utils::TimestampMs, BlockHeight, ContractName, LaneId, RunResult};
 
@@ -578,7 +578,7 @@ impl Orderbook {
 
         // Updating balances
         // If not limit order: assert that total balance in user_to_fund is equal to the order quantity
-        let mut ids = HashMap::<String, HashSet<String>>::new();
+        let mut ids = BTreeMap::<String, BTreeSet<String>>::new();
         for (from, to, token, amout) in transfers_to_process {
             self.transfer_tokens(&from, &to, &token, amout)?;
             let t = ids.entry(token.clone()).or_default();
@@ -605,19 +605,19 @@ pub struct Orderbook {
     // Validator public key of the lane this orderbook is running on
     lane_id: LaneId,
     // Map of user address to token balances
-    balances: HashMap<String, HashMap<String, u32>>,
+    balances: BTreeMap<String, BTreeMap<String, u32>>,
     // Map of user address to token latest deposit block height
-    latest_deposit: HashMap<String, HashMap<String, BlockHeight>>,
+    latest_deposit: BTreeMap<String, BTreeMap<String, BlockHeight>>,
     // All orders indexed by order_id
-    orders: HashMap<String, Order>,
+    orders: BTreeMap<String, Order>,
     // Buy orders sorted by price (highest first) for each token pair
-    buy_orders: HashMap<TokenPair, VecDeque<String>>,
+    buy_orders: BTreeMap<TokenPair, VecDeque<String>>,
     // Sell orders sorted by price (lowest first) for each token pair
-    sell_orders: HashMap<TokenPair, VecDeque<String>>,
+    sell_orders: BTreeMap<TokenPair, VecDeque<String>>,
     // History of orders executed, indexed by token pair and timestamp
-    orders_history: HashMap<TokenPair, HashMap<TimestampMs, u32>>,
+    orders_history: BTreeMap<TokenPair, BTreeMap<TimestampMs, u32>>,
     // Accepted tokens
-    accepted_tokens: HashSet<ContractName>,
+    accepted_tokens: BTreeSet<ContractName>,
 }
 
 impl Orderbook {
@@ -716,10 +716,10 @@ impl Orderbook {
 
 impl Orderbook {
     pub fn init(lane_id: LaneId) -> Self {
-        let mut balances = HashMap::new();
-        balances.insert("orderbook".to_string(), HashMap::new());
+        let mut balances = BTreeMap::new();
+        balances.insert("orderbook".to_string(), BTreeMap::new());
 
-        let accepted_tokens = HashSet::from([
+        let accepted_tokens = BTreeSet::from([
             "oranj".into(),
             "hyllar".into(),
         ]);
@@ -727,11 +727,11 @@ impl Orderbook {
         Orderbook {
             lane_id,
             balances,
-            latest_deposit: HashMap::new(),
-            orders: HashMap::new(),
-            buy_orders: HashMap::new(),
-            sell_orders: HashMap::new(),
-            orders_history: HashMap::new(),
+            latest_deposit: BTreeMap::new(),
+            orders: BTreeMap::new(),
+            buy_orders: BTreeMap::new(),
+            sell_orders: BTreeMap::new(),
+            orders_history: BTreeMap::new(),
             accepted_tokens
         }
     }
@@ -740,22 +740,22 @@ impl Orderbook {
         let user1 = "Alice".to_string();
         let user2 = "Bob".to_string();
 
-        let mut balances = HashMap::new();
-        balances.insert(user1.clone(), HashMap::from([
+        let mut balances = BTreeMap::new();
+        balances.insert(user1.clone(), BTreeMap::from([
             ("oranj".to_string(), 5),
             ("hyllar".to_string(), 20),
         ]));
-        balances.insert(user2.clone(), HashMap::from([
+        balances.insert(user2.clone(), BTreeMap::from([
             ("oranj".to_string(), 10),
             ("hyllar".to_string(), 10),
         ]));
 
-        let mut latest_deposit = HashMap::new();
-        latest_deposit.insert(user1.clone(), HashMap::from([
+        let mut latest_deposit = BTreeMap::new();
+        latest_deposit.insert(user1.clone(), BTreeMap::from([
             ("oranj".to_string(), BlockHeight(0)),
             ("hyllar".to_string(), BlockHeight(0)),
         ]));
-        latest_deposit.insert(user2.clone(), HashMap::from([
+        latest_deposit.insert(user2.clone(), BTreeMap::from([
             ("oranj".to_string(), BlockHeight(0)),
             ("hyllar".to_string(), BlockHeight(0)),
         ]));
@@ -783,18 +783,18 @@ impl Orderbook {
             timestamp: TimestampMs(2),
         };
 
-        let mut orders = HashMap::new();
+        let mut orders = BTreeMap::new();
         orders.insert(order1.order_id.clone(), order1.clone());
         orders.insert(order2.order_id.clone(), order2.clone());
 
-        let mut buy_orders = HashMap::new();
+        let mut buy_orders = BTreeMap::new();
         buy_orders.insert(pair.clone(), VecDeque::from(vec![order1.order_id.clone()]));
 
-        let mut sell_orders = HashMap::new();
+        let mut sell_orders = BTreeMap::new();
         sell_orders.insert(pair.clone(), VecDeque::from(vec![order2.order_id.clone()]));
 
 
-        let accepted_tokens = HashSet::from([
+        let accepted_tokens = BTreeSet::from([
             "oranj".into(),
             "hyllar".into(),
         ]);
@@ -806,7 +806,7 @@ impl Orderbook {
             orders,
             buy_orders,
             sell_orders,
-            orders_history: HashMap::new(),
+            orders_history: BTreeMap::new(),
             accepted_tokens
         }
     }
@@ -899,7 +899,7 @@ impl From<sdk::StateCommitment> for Orderbook {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     static TX_CTX: sdk::TxContext = sdk::TxContext {
             block_height: sdk::BlockHeight(6),
@@ -914,22 +914,22 @@ mod tests {
         let eth_user = "eth_user".to_string();
         let usd_user = "usd_user".to_string();
 
-        let mut eth_token = HashMap::new();
+        let mut eth_token = BTreeMap::new();
         eth_token.insert("ETH".to_string(), 10);
         orderbook.balances.insert(eth_user.clone(), eth_token);
 
-        let mut usd_token = HashMap::new();
+        let mut usd_token = BTreeMap::new();
         usd_token.insert("USD".to_string(), 3000);
 
         orderbook.balances.insert(usd_user.clone(), usd_token);
 
         orderbook.latest_deposit.insert(
             eth_user.clone(),
-            HashMap::from([("ETH".to_string(), BlockHeight(0))]));
+            BTreeMap::from([("ETH".to_string(), BlockHeight(0))]));
 
         orderbook.latest_deposit.insert(
             usd_user.clone(),
-            HashMap::from([("USD".to_string(), BlockHeight(0))]),
+            BTreeMap::from([("USD".to_string(), BlockHeight(0))]),
         );
 
         (eth_user, usd_user, orderbook)

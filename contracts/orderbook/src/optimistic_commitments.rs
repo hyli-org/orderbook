@@ -1,26 +1,23 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{Order, Orderbook, TokenPair};
-use borsh::{io::Error, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use client_sdk::transaction_builder::OptimisticCommitments;
 use sdk::{hyle_model_utils::TimestampMs, ContractName, LaneId};
 
-#[derive(BorshSerialize, BorshDeserialize)]
-struct OrderbookCommitment {
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub struct OrderbookCommitment {
     lane_id: LaneId,
-    balances: HashMap<String, HashMap<String, u32>>,
-    orders: HashMap<String, Order>,
-    buy_orders: HashMap<TokenPair, VecDeque<String>>,
-    sell_orders: HashMap<TokenPair, VecDeque<String>>,
-    orders_history: HashMap<TokenPair, HashMap<TimestampMs, u32>>,
-    accepted_tokens: HashSet<ContractName>,
-}
-
-pub trait OptimisticCommitments {
-    fn optimistic_commitments(&self) -> Result<Vec<u8>, Error>;
+    balances: BTreeMap<String, BTreeMap<String, u32>>,
+    orders: BTreeMap<String, Order>,
+    buy_orders: BTreeMap<TokenPair, VecDeque<String>>,
+    sell_orders: BTreeMap<TokenPair, VecDeque<String>>,
+    orders_history: BTreeMap<TokenPair, BTreeMap<TimestampMs, u32>>,
+    accepted_tokens: BTreeSet<ContractName>,
 }
 
 impl OptimisticCommitments for Orderbook {
-    fn optimistic_commitments(&self) -> Result<Vec<u8>, Error> {
+    fn optimistic_commitments(&self) -> anyhow::Result<Vec<u8>> {
         let commitment = OrderbookCommitment {
             lane_id: self.lane_id.clone(),
             balances: self.balances.clone(),
@@ -31,6 +28,6 @@ impl OptimisticCommitments for Orderbook {
             accepted_tokens: self.accepted_tokens.clone(),
         };
 
-        borsh::to_vec(&commitment)
+        Ok(borsh::to_vec(&commitment)?)
     }
 }

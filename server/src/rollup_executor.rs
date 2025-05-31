@@ -1,15 +1,14 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use client_sdk::transaction_builder::TxExecutorHandler;
+use client_sdk::transaction_builder::{OptimisticCommitments, TxExecutorHandler};
 use hyle_modules::{
     bus::{BusClientSender, SharedMessageBus},
-    log_error, module_bus_client, module_handle_messages,
+    log_error, log_warn, module_bus_client, module_handle_messages,
     modules::Module,
 };
-use orderbook::optimistic_commitments::OptimisticCommitments;
 use sdk::{
-    BlobTransaction, BlockHeight, Calldata, ContractName, Hashed, HyleOutput, Identity, LaneId,
-    MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash,
+    BlobTransaction, Block, BlockHeight, Calldata, ContractName, Hashed, HyleOutput, Identity,
+    LaneId, MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash,
 };
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -207,12 +206,18 @@ pub struct RollupExecutorCtx {
 #[derive(Debug, Clone)]
 pub enum RollupExecutorEvent {
     /// Event sent when a blob is executed as successfully
-    TxExecutionSuccess(BlobTransaction, Vec<(HyleOutput, ContractName)>),
+    TxExecutionSuccess(
+        BlobTransaction,
+        Vec<(HyleOutput, ContractName)>,
+        // TODO: Remove this field, and make an nested api to get optimistic states
+        BTreeMap<ContractName, ContractBox>,
+    ),
     /// Event sent when a BlobTransaction fails
     FailedTx(Identity, TxHash, String),
     /// Event sent when a blob is reverted
     /// After a revert, the contract state is recalculated
-    Rollback,
+    /// TODO: Remove the field, and make an nested api to get optimistic states
+    Rollback(BTreeMap<ContractName, ContractBox>),
 }
 
 module_bus_client! {
@@ -284,85 +289,30 @@ impl RollupExecutor {
         match event {
             NodeStateEvent::NewBlock(block) => {
                 self.block_height = block.block_height;
+                let mut should_rerun = false;
 
                 // Add all new sequenced transactions to unsettled_sequenced_txs
-                for (tx_id, tx) in block.txs.iter() {
-                    if let TransactionData::Blob(blob_tx) = &tx.transaction_data {
-                        let mut should_keep = false;
-                        for blob in &blob_tx.blobs {
-                            if self.optimistic_states.contains_key(&blob.contract_name) {
-                                // contract_name is watched, keep this blob/tx
-                                should_keep = true;
-                            }
-                        }
-                        if !should_keep {
-                            break;
-                        }
-                        tracing::error!("blob_tx: {:?}", blob_tx);
-                        let tx_ctx = block.build_tx_ctx(&blob_tx.hashed())?;
-                        self.unsettled_sequenced_txs.push((blob_tx.clone(), tx_ctx));
-
-                        // Remove duplicata from unsettled_unsequenced_txs
-                        self.unsettled_unsequenced_txs
-                            .retain(|(tx, _)| tx.hashed() != tx_id.1);
-                    }
-                }
+                should_rerun = should_rerun || self.process_new_sequenced_transactions(&block)?;
 
                 // Handle successful transactions
                 // This means execute the transaction on top of settled_contracts and remove it from unsettled_sequenced_txs/unsettled_unsequenced_txs
-                for tx_hash in block.successful_txs.clone() {
-                    // Remove the transaction from unsettled sequenced transactions
-                    self.unsettled_unsequenced_txs
-                        .retain(|(tx, _)| tx.hashed() != tx_hash);
-
-                    // Remove the transaction from unsettled unsequenced transactions
-                    self.unsettled_unsequenced_txs
-                        .retain(|(tx, _)| tx.hashed() != tx_hash);
-
-                    if let Some((_, tx)) = block.txs.iter().find(|(tx_id, _)| tx_id.1 == tx_hash) {
-                        if let TransactionData::Blob(blob_tx) = &tx.transaction_data {
-                            let tx_ctx = block.build_tx_ctx(&blob_tx.hashed())?;
-                            if let Err(e) = Self::execute_blob_tx(
-                                &mut self.settled_states,
-                                blob_tx,
-                                Some(tx_ctx),
-                            ) {
-                                // This _really_ should not happen, as we are executing a successful transaction on settled state.
-                                // Probably indicates misconfiguration or desync from the chain.
-                                tracing::error!(
-                                    "Error while executing settled transaction {}: {:?}",
-                                    tx_hash,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
+                should_rerun = should_rerun || self.process_successful_transactions(&block)?;
 
                 // Handle failed/timedout transactions
                 // This means remove the transaction from unsettled_sequenced_txs/unsettled_unsequenced_txs
+                should_rerun = should_rerun || self.process_failed_transactions(&block)?;
                 // and re-execute the transaction from from unsettled_sequenced_txs + unsettled_unsequenced_txs
-                let merged_set: HashSet<_> = block
-                    .timed_out_txs
-                    .iter()
-                    .chain(block.failed_txs.iter())
-                    .cloned()
-                    .collect();
-                // This means execute the transaction on top of settled_contracts and remove it from unsettled_sequenced_txs/unsettled_unsequenced_txs
-                for tx_hash in merged_set.iter() {
-                    // Remove the transaction from unsettled sequenced transactions
-                    self.unsettled_unsequenced_txs
-                        .retain(|(tx, _)| &tx.hashed() != tx_hash);
 
-                    // Remove the transaction from unsettled unsequenced transactions
-                    self.unsettled_unsequenced_txs
-                        .retain(|(tx, _)| &tx.hashed() != tx_hash);
-                }
-
-                // Rerun from settled; and compare the "optimistic state commitments" on watched contracts
-                if let Err(e) = self.rerun_from_settled() {
-                    self.bus.send(RollupExecutorEvent::Rollback)?;
-                    tracing::warn!("{:?}", e);
+                // Rerun the transaction from unsettled_sequenced_txs + unsettled_unsequenced_txs
+                // starting from settled state; and compare the "optimistic state commitments" on watched contracts
+                // This means reexecution at every block. This is inefficient for now.
+                if should_rerun {
+                    if let Err(e) = self.rerun_watched_contracts_from_settled() {
+                        self.bus.send(RollupExecutorEvent::Rollback(
+                            self.optimistic_states.clone(),
+                        ))?;
+                        tracing::warn!("{:?}", e);
+                    }
                 }
 
                 Ok(())
@@ -379,6 +329,9 @@ impl RollupExecutor {
                     ..Default::default()
                 });
                 if let TransactionData::Blob(blob_tx) = tx.transaction_data {
+                    if !self.should_keep_transaction(&blob_tx) {
+                        return Ok(());
+                    }
                     let hyle_outputs = match Self::execute_blob_tx(
                         &mut self.optimistic_states,
                         &blob_tx,
@@ -403,12 +356,100 @@ impl RollupExecutor {
                     self.bus.send(RollupExecutorEvent::TxExecutionSuccess(
                         blob_tx,
                         hyle_outputs,
+                        self.optimistic_states.clone(),
                     ))?;
                 }
                 Ok(())
             }
             _ => Ok(()),
         }
+    }
+
+    fn process_new_sequenced_transactions(&mut self, block: &Block) -> Result<bool> {
+        let mut should_rerun = false;
+        for (tx_id, tx) in block.txs.iter() {
+            if let TransactionData::Blob(blob_tx) = &tx.transaction_data {
+                if !self.should_keep_transaction(blob_tx) {
+                    continue;
+                }
+
+                let tx_ctx = block.build_tx_ctx(&blob_tx.hashed())?;
+                self.unsettled_sequenced_txs.push((blob_tx.clone(), tx_ctx));
+
+                // Remove duplicates from unsequenced
+                self.unsettled_unsequenced_txs
+                    .retain(|(tx, _)| tx.hashed() != tx_id.1);
+                should_rerun = true;
+            }
+        }
+        Ok(should_rerun)
+    }
+
+    fn process_successful_transactions(&mut self, block: &Block) -> Result<bool> {
+        let mut should_rerun = false;
+        for tx_hash in &block.successful_txs {
+            // Execute the transaction on settled states
+            if let Some((_, tx)) = block.txs.iter().find(|(tx_id, _)| &tx_id.1 == tx_hash) {
+                if let TransactionData::Blob(blob_tx) = &tx.transaction_data {
+                    if !self.should_keep_transaction(blob_tx) {
+                        continue;
+                    }
+                    self.remove_transaction_from_unsettled(tx_hash.clone());
+                    let tx_ctx = block.build_tx_ctx(&blob_tx.hashed())?;
+                    should_rerun = true;
+                    if let Err(e) =
+                        Self::execute_blob_tx(&mut self.settled_states, blob_tx, Some(tx_ctx))
+                    {
+                        // This _really_ should not happen, as we are executing a successful transaction on settled state.
+                        // Probably indicates misconfiguration or desync from the chain.
+                        tracing::error!(
+                            "Error while executing settled transaction {}: {:?}",
+                            tx_hash,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        Ok(should_rerun)
+    }
+
+    fn process_failed_transactions(&mut self, block: &Block) -> Result<bool> {
+        let mut should_rerun = false;
+        let failed_txs: HashSet<_> = block
+            .timed_out_txs
+            .iter()
+            .chain(block.failed_txs.iter())
+            .cloned()
+            .collect();
+
+        for tx_hash in failed_txs {
+            should_rerun = self.remove_transaction_from_unsettled(tx_hash);
+        }
+        Ok(should_rerun)
+    }
+
+    /// Checks if there is a blob related to a handled optimistic contract
+    fn should_keep_transaction(&self, blob_tx: &BlobTransaction) -> bool {
+        blob_tx
+            .blobs
+            .iter()
+            .any(|blob| self.optimistic_states.contains_key(&blob.contract_name))
+    }
+
+    fn remove_transaction_from_unsettled(&mut self, tx_hash: TxHash) -> bool {
+        let initial_sequenced_len = self.unsettled_sequenced_txs.len();
+        let initial_unsequenced_len = self.unsettled_unsequenced_txs.len();
+
+        self.unsettled_sequenced_txs
+            .retain(|(tx, _)| tx.hashed() != tx_hash);
+        self.unsettled_unsequenced_txs
+            .retain(|(tx, _)| tx.hashed() != tx_hash);
+
+        let sequenced_removed = self.unsettled_sequenced_txs.len() != initial_sequenced_len;
+        let unsequenced_removed = self.unsettled_unsequenced_txs.len() != initial_unsequenced_len;
+
+        sequenced_removed || unsequenced_removed
     }
 
     /// This function executes the blob transaction and returns the outputs of the contract.
@@ -476,7 +517,7 @@ impl RollupExecutor {
         Ok(hyle_outputs)
     }
 
-    pub fn rerun_from_settled(&mut self) -> Result<()> {
+    pub fn rerun_watched_contracts_from_settled(&mut self) -> Result<()> {
         let mut optimistic_commitments = BTreeMap::new();
         for contract_name in &self.watched_contracts {
             let commitment = self
@@ -494,14 +535,20 @@ impl RollupExecutor {
 
         // Re-execute all sequenced_unsettled transactions
         for (blob_tx, tx_ctx) in self.unsettled_sequenced_txs.clone() {
-            let _ =
-                Self::execute_blob_tx(&mut self.optimistic_states, &blob_tx, Some(tx_ctx.clone()));
+            // A reexecution can fail. We do not want to crash here
+            // What matters is the optimistic commitments comparaison
+            let _ = log_warn!(
+                Self::execute_blob_tx(&mut self.optimistic_states, &blob_tx, Some(tx_ctx.clone())),
+                "Failed to re-execute sequenced tx"
+            );
         }
 
         // Re-execute all unsequenced_unsettled transactions
         for (blob_tx, tx_ctx) in self.unsettled_unsequenced_txs.clone() {
-            let _ =
-                Self::execute_blob_tx(&mut self.optimistic_states, &blob_tx, Some(tx_ctx.clone()));
+            let _ = log_warn!(
+                Self::execute_blob_tx(&mut self.optimistic_states, &blob_tx, Some(tx_ctx.clone())),
+                "Failed to re-execute unsequenced tx"
+            );
         }
 
         for contract_name in &self.watched_contracts {
