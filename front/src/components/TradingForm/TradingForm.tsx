@@ -222,8 +222,8 @@ const PercentageDisplay = styled.div`
 `;
 
 export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
-  const { state, fetchBalances } = useAppContext(); // Use AppContext
-  const { currentUser, balances } = state;
+  const { state, fetchBalances, wallet } = useAppContext(); // Use AppContext with wallet
+  const { balances } = state;
   const { refetchPositions } = usePositionsContext(); // Get refetchPositions from context
 
   const [activeTab, setActiveTab] = useState<'market' | 'limit'>('market');
@@ -306,7 +306,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
       numericAmount,
     );
 
-    const identity: Identity = currentUser as Identity; // Use currentUser from context
+    const identity: Identity = wallet?.address as Identity; // Use wallet address from context
 
     const blobTx: BlobTransaction = {
       identity,
@@ -319,8 +319,8 @@ export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
       console.log('Transaction sent, hash:', blobTxHash);
       
       // Fetch updated balances after successful order
-      if (currentUser) {
-        await fetchBalances(currentUser);
+      if (wallet?.address) {
+        await fetchBalances(wallet.address);
       }
 
       // Refetch positions after successful order and balance update

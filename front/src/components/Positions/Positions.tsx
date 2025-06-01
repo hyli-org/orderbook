@@ -317,8 +317,7 @@ interface EnhancedPositionForDisplay {
 
 export const Positions: React.FC<PositionsProps> = () => {
   const { positions, loading, error, refetchPositions } = usePositionsContext();
-  const { state, fetchBalances } = useAppContext(); // Use AppContext for current user and balance updates
-  const { currentUser } = state;
+  const { fetchBalances, wallet } = useAppContext(); // Use AppContext for wallet and balance updates
 
   // Process positions to include market information and adapt to display structure
   const enhancedPositions: EnhancedPositionForDisplay[] = positions.map((orderData: UserPositionOrder) => {
@@ -343,8 +342,8 @@ export const Positions: React.FC<PositionsProps> = () => {
 
   // Handle cancel order functionality
   const handleCancelOrder = async (order: UserPositionOrder) => {
-    if (!currentUser) {
-      console.error("No current user available for canceling order");
+    if (!wallet?.address) {
+      console.error("No wallet addressSend available for canceling order");
       return;
     }
 
@@ -353,7 +352,7 @@ export const Positions: React.FC<PositionsProps> = () => {
       
       const blob = cancelOrder(order.order_id);
       
-      const identity: Identity = currentUser as Identity;
+      const identity: Identity = wallet as Identity;
       
       const blobTx: BlobTransaction = {
         identity,
@@ -365,8 +364,8 @@ export const Positions: React.FC<PositionsProps> = () => {
       console.log('Cancel transaction sent, hash:', blobTxHash);
       
       // Fetch updated balances after successful cancellation
-      if (currentUser) {
-        await fetchBalances(currentUser);
+      if (wallet?.address) {
+        await fetchBalances(wallet.addressSend);
       }
 
       // Refetch positions after successful cancellation and balance update

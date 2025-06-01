@@ -6,6 +6,7 @@ import { deposit } from '../../models/Orderbook';
 import { nodeService } from '../../services/NodeService';
 import type { BlobTransaction, Identity } from 'hyli';
 import { useAppContext } from '../../contexts/AppContext';
+import { useWallet } from 'hyli-wallet';
 
 // Page Container
 const PageContainer = styled.div`
@@ -364,7 +365,7 @@ const CURRENCIES = ["HYLLAR", "ORANJ"];
 const DepositForm: React.FC = () => {
     const navigate = useNavigate();
     const { state, fetchBalances } = useAppContext();
-    const currentUser = state.currentUser;
+    const { wallet, createIdentityBlobs } = useWallet();
     const [amount, setAmount] = useState<string>('');
     const [selectedCurrency, setSelectedCurrency] = useState<string>(CURRENCIES[0]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -390,16 +391,18 @@ const DepositForm: React.FC = () => {
 
         setIsLoading(true);
 
-        const blob = deposit(
+        const orderbookBlob = deposit(
             selectedCurrency,
             numericAmount,
         );
 
-        const identity: Identity = currentUser as Identity;
+        const identity: Identity = wallet?.address as Identity;
+
+        const [blob0, blob1] = createIdentityBlobs();
 
         const blobTx: BlobTransaction = {
             identity,
-            blobs: [blob],
+            blobs: [blob0, blob1, orderbookBlob],
         };
 
         try {
@@ -408,8 +411,8 @@ const DepositForm: React.FC = () => {
             console.log('Deposit transaction successful, hash:', blobTxHash);
             setSuccessMessage(`Deposit successful! Your ${selectedCurrency} will be available shortly.`);
             setAmount('');
-            if (currentUser) {
-                await fetchBalances(currentUser);
+            if (wallet?.address) {
+                await fetchBalances(wallet.address);
             }
         } catch (e: any) {
             console.error('Deposit transaction failed:', e);
@@ -436,7 +439,7 @@ const DepositForm: React.FC = () => {
                     <TitleSection>
                         <Title>Deposit Funds</Title>
                         <Subtitle>
-                            Add funds to your HyLiquid account ({currentUser}) to start trading
+                            Add funds to your HyLiquid account ({wallet?.username || wallet?.address || 'Not connected'}) to start trading
                         </Subtitle>
                     </TitleSection>
 

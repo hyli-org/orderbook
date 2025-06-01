@@ -8,6 +8,7 @@ import { PositionsProvider } from './contexts/PositionsContext'; // Import Posit
 import './App.css';
 import { useEffect } from 'react'; // Import useEffect
 import { DEFAULT_PAIR_ID } from './constants/assets'; // Import default pair ID
+import { WalletProvider } from 'hyli-wallet';
 
 // Component to handle initial state loading
 const AppInitializer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -41,19 +42,27 @@ function App() {
   const lastVisitedPairUrl = DEFAULT_PAIR_ID.replace('/', '-');
 
   return (
-    <AppProvider>
-      <OrderbookProvider>
-        <PositionsProvider>
-          <AppInitializer>
-            <Routes>
-              <Route path="/" element={<Navigate to={`/pair/${lastVisitedPairUrl}`} replace />} />
-              <Route path="/pair/:pairId" element={<PairPage />} />
-              <Route path="/deposit" element={<DepositForm />} />
-            </Routes>
-          </AppInitializer>
-        </PositionsProvider>
-      </OrderbookProvider>
-    </AppProvider>
+    <WalletProvider
+        config={{
+            nodeBaseUrl: import.meta.env.VITE_NODE_BASE_URL,
+            walletServerBaseUrl: import.meta.env.VITE_WALLET_SERVER_BASE_URL,
+            applicationWsUrl: import.meta.env.VITE_WALLET_WS_URL,
+        }}
+    >
+      <AppProvider>
+        <OrderbookProvider>
+          <PositionsProvider>
+            <AppInitializer>
+              <Routes>
+                <Route path="/" element={<Navigate to={`/pair/${lastVisitedPairUrl}`} replace />} />
+                <Route path="/pair/:pairId" element={<PairPage />} />
+                <Route path="/deposit" element={<DepositForm />} />
+              </Routes>
+            </AppInitializer>
+          </PositionsProvider>
+        </OrderbookProvider>
+      </AppProvider>
+    </WalletProvider>
   );
 }
 
