@@ -3,15 +3,10 @@ resolver = "2"
 members = ["contracts", "contracts/orderbook", "server"]
 
 [workspace.dependencies]
-# sdk = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-contract-sdk", branch = "main" }
-# client-sdk = { git = "https://github.com/Hyle-org/hyle.git", default-features = false, package = "hyle-client-sdk", branch = "main" }
-# hyle-modules = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-modules", branch = "main" }
-# wallet = { git = "https://github.com/hyli-org/wallet.git", branch = "main", package = "wallet", default-features = false }
-
-wallet = { path = "../wallet/contracts/wallet", package = "wallet" }
-sdk = { path = "../hyli/crates/contract-sdk", package = "hyle-contract-sdk" }
-client-sdk = { path = "../hyli/crates/client-sdk", default-features = false, package = "hyle-client-sdk" }
-hyle-modules = { path = "../hyli/crates/hyle-modules", package = "hyle-modules" }
+sdk = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-contract-sdk", branch = "main" }
+client-sdk = { git = "https://github.com/Hyle-org/hyle.git", default-features = false, package = "hyle-client-sdk", branch = "main" }
+hyle-modules = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-modules", branch = "main" }
+wallet = { git = "https://github.com/hyli-org/wallet.git", branch = "main", package = "wallet", default-features = false }
 
 contracts = { path = "contracts", default-features = false, package = "contracts" }
 orderbook = { path = "contracts/orderbook", package = "orderbook" }

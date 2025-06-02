@@ -6,9 +6,10 @@ use hyle_modules::{
     log_error, module_bus_client, module_handle_messages,
     modules::Module,
 };
+use orderbook::Orderbook;
 use sdk::{
     BlobTransaction, Block, BlockHeight, Calldata, ContractName, Hashed, HyleOutput, Identity,
-    LaneId, MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash, ZkContract,
+    LaneId, MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash,
 };
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -42,7 +43,7 @@ impl DerefMut for RollupExecutor {
     }
 }
 
-pub trait RollupContract: ZkContract + TxExecutorHandler + Debug + Send + Sync {
+pub trait RollupContract: TxExecutorHandler + Debug + Send + Sync {
     fn clone_box(&self) -> Box<dyn RollupContract>;
     fn borsh_serialize_box(&self) -> Result<Vec<u8>, std::io::Error>;
     fn as_any(&self) -> &dyn Any;
@@ -51,7 +52,6 @@ pub trait RollupContract: ZkContract + TxExecutorHandler + Debug + Send + Sync {
 impl<T> RollupContract for T
 where
     T: 'static
-        + ZkContract
         + TxExecutorHandler
         + BorshSerialize
         + BorshDeserialize
@@ -80,8 +80,7 @@ pub struct ContractBox {
 impl ContractBox {
     pub fn new<T>(inner: T) -> Self
     where
-        T: ZkContract
-            + TxExecutorHandler
+        T: TxExecutorHandler
             + Clone
             + Debug
             + BorshSerialize
@@ -99,8 +98,7 @@ impl ContractBox {
 
     pub fn downcast<T>(&self) -> Option<&T>
     where
-        T: ZkContract
-            + TxExecutorHandler
+        T: TxExecutorHandler
             + Clone
             + Debug
             + BorshSerialize
@@ -521,12 +519,13 @@ impl RollupExecutor {
     pub fn rerun_from_settled(&mut self) -> Result<()> {
         let mut optimistic_commits = BTreeMap::new();
         for contract_name in &self.watched_contracts {
-            let commitment = self
-                .optimistic_states
-                .get(contract_name)
-                .unwrap()
-                .partial_commit();
-            optimistic_commits.insert(contract_name.clone(), commitment);
+            // WARN: This part is specific to orderbook
+            if contract_name.0 == "orderbook" {
+                let orderbook_contract_box = self.optimistic_states.get(contract_name).unwrap();
+                let orderbook_contract = orderbook_contract_box.downcast::<Orderbook>().unwrap();
+                let commitment = orderbook_contract.partial_commit();
+                optimistic_commits.insert(contract_name.clone(), commitment);
+            }
         }
         // Revert each contract to the settled state.
         for (contract_name, state) in self.settled_states.clone() {
@@ -549,16 +548,18 @@ impl RollupExecutor {
         }
 
         for contract_name in &self.watched_contracts {
-            let new_commitment = self
-                .optimistic_states
-                .get(contract_name)
-                .unwrap()
-                .partial_commit();
-            if new_commitment != optimistic_commits[contract_name] {
-                anyhow::bail!(
-                    "Optimistic state commitment for contract {} has changed after rerun",
-                    contract_name
-                );
+            // WARN: This part is specific to orderbook
+            if contract_name.0 == "orderbook" {
+                let orderbook_contract_box = self.optimistic_states.get(contract_name).unwrap();
+                let orderbook_contract = orderbook_contract_box.downcast::<Orderbook>().unwrap();
+                let new_commitment = orderbook_contract.partial_commit();
+
+                if new_commitment != optimistic_commits[contract_name] {
+                    anyhow::bail!(
+                        "Optimistic state commitment for contract {} has changed after rerun",
+                        contract_name
+                    );
+                }
             }
         }
         Ok(())

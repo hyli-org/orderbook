@@ -84,14 +84,6 @@ impl sdk::ZkContract for Orderbook {
     fn commit(&self) -> sdk::StateCommitment {
         sdk::StateCommitment(self.as_bytes().expect("Failed to encode Orderbook"))
     }
-
-    fn partial_commit(&self) -> sdk::StateCommitment {
-        let mut partial_state = self.clone();
-        partial_state.latest_deposit = Default::default();
-
-
-        sdk::StateCommitment(borsh::to_vec(&partial_state).expect("Failed to encode Orderbook partial state"))
-    }
 }
 
 impl Orderbook {
@@ -742,79 +734,10 @@ impl Orderbook {
         }
     }
 
-    pub fn init_with_fake_data(lane_id: LaneId) -> Self {
-        let user1 = "Alice".to_string();
-        let user2 = "Bob".to_string();
-
-        let mut balances = BTreeMap::new();
-        balances.insert(user1.clone(), BTreeMap::from([
-            ("oranj".to_string(), 5),
-            ("hyllar".to_string(), 20),
-        ]));
-        balances.insert(user2.clone(), BTreeMap::from([
-            ("oranj".to_string(), 10),
-            ("hyllar".to_string(), 10),
-        ]));
-
-        let mut latest_deposit = BTreeMap::new();
-        latest_deposit.insert(user1.clone(), BTreeMap::from([
-            ("oranj".to_string(), BlockHeight(0)),
-            ("hyllar".to_string(), BlockHeight(0)),
-        ]));
-        latest_deposit.insert(user2.clone(), BTreeMap::from([
-            ("oranj".to_string(), BlockHeight(0)),
-            ("hyllar".to_string(), BlockHeight(0)),
-        ]));
-
-        let pair = ("oranj".to_string(), "hyllar".to_string());
-        let now = TimestampMs(1);
-
-        let order1 = Order {
-            owner: user1.clone(),
-            order_id: "order1".to_string(),
-            order_type: OrderType::Buy,
-            price: Some(10),
-            pair: pair.clone(),
-            quantity: 2,
-            timestamp: now,
-        };
-
-        let order2 = Order {
-            owner: user2.clone(),
-            order_id: "order2".to_string(),
-            order_type: OrderType::Sell,
-            price: Some(12),
-            pair: pair.clone(),
-            quantity: 3,
-            timestamp: TimestampMs(2),
-        };
-
-        let mut orders = BTreeMap::new();
-        orders.insert(order1.order_id.clone(), order1.clone());
-        orders.insert(order2.order_id.clone(), order2.clone());
-
-        let mut buy_orders = BTreeMap::new();
-        buy_orders.insert(pair.clone(), VecDeque::from(vec![order1.order_id.clone()]));
-
-        let mut sell_orders = BTreeMap::new();
-        sell_orders.insert(pair.clone(), VecDeque::from(vec![order2.order_id.clone()]));
-
-
-        let accepted_tokens = BTreeSet::from([
-            "oranj".into(),
-            "hyllar".into(),
-        ]);
-
-        Orderbook {
-            lane_id,
-            balances,
-            latest_deposit,
-            orders,
-            buy_orders,
-            sell_orders,
-            orders_history: BTreeMap::new(),
-            accepted_tokens
-        }
+    pub fn partial_commit(&self) -> sdk::StateCommitment {
+        let mut partial_state = self.clone();
+        partial_state.latest_deposit = Default::default();
+        sdk::StateCommitment(borsh::to_vec(&partial_state).expect("Failed to encode Orderbook partial state"))
     }
 }
 
