@@ -737,6 +737,13 @@ impl Orderbook {
     pub fn partial_commit(&self) -> sdk::StateCommitment {
         let mut partial_state = self.clone();
         partial_state.latest_deposit = Default::default();
+        partial_state.orders_history = Default::default();
+
+        // Reset all order timestamps to 0
+        for (_, order) in partial_state.orders.iter_mut() {
+            order.timestamp = TimestampMs(0);
+        }
+
         sdk::StateCommitment(borsh::to_vec(&partial_state).expect("Failed to encode Orderbook partial state"))
     }
 }

@@ -7,6 +7,7 @@ import { createOrder, OrderType as OrderbookOrderType } from '../../models/Order
 import type { BlobTransaction, Identity } from 'hyli'; // Added
 import { useAppContext } from '../../contexts/AppContext'; // Import useAppContext
 import { usePositionsContext } from '../../contexts/PositionsContext'; // Import usePositionsContext
+import { useWallet } from 'hyli-wallet';
 
 // Assuming Position interface is available or imported
 // For now, let's define it here if not globally available in this context
@@ -222,7 +223,8 @@ const PercentageDisplay = styled.div`
 `;
 
 export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
-  const { state, fetchBalances, wallet } = useAppContext(); // Use AppContext with wallet
+  const { state, fetchBalances } = useAppContext();
+  const { wallet, createIdentityBlobs } = useWallet();
   const { balances } = state;
   const { refetchPositions } = usePositionsContext(); // Get refetchPositions from context
 
@@ -298,7 +300,7 @@ export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
       price = numericLimitPrice;
     }
 
-    const blob = createOrder(
+    const orderbookBlob = createOrder(
       orderId,
       orderType === 'buy' ? OrderbookOrderType.Buy : OrderbookOrderType.Sell,
       price, 
@@ -308,9 +310,12 @@ export const TradingForm: React.FC<TradingFormProps> = ({ marketPrice }) => {
 
     const identity: Identity = wallet?.address as Identity; // Use wallet address from context
 
+    const [blob0, blob1] = createIdentityBlobs();
+
+
     const blobTx: BlobTransaction = {
       identity,
-      blobs: [blob],
+      blobs: [blob0, blob1, orderbookBlob],
     };
 
     try {
