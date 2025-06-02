@@ -17,7 +17,7 @@ serde = { version = "1.0", default-features = false, features = [
   "alloc",
 ] }
 borsh = { version = "1.5.7" }
-tokio = { version = "1.45.1" }
+
 
 sp1-zkvm = { version = "4.2.0", default-features = false, optional = true }
 client-sdk = { workspace = true, default-features = false, features = [

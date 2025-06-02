@@ -39,8 +39,7 @@ interface PositionsContextType extends PositionsState {
 const PositionsContext = createContext<PositionsContextType | undefined>(undefined);
 
 export const PositionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { state: appState } = useAppContext();
-  const userAddress = appState.currentUser; // Get user address from AppContext
+  const { wallet } = useAppContext();
 
   const [state, setState] = useState<PositionsState>({
     positions: [],
@@ -49,13 +48,14 @@ export const PositionsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const fetchPositions = useCallback(async () => {
+    const userAddress = wallet?.address;
     if (!userAddress) {
-      // console.log('No userAddress available in AppContext, skipping fetchPositions.');
+      // console.log('No wallet address available, skipping fetchPositions.');
       setState({
         positions: [],
         loading: false,
         // Optionally set an error or just clear positions if user is not logged in/set
-        error: 'Current user not set. Cannot fetch positions.', 
+        error: 'Wallet not connected. Cannot fetch positions.', 
       });
       return;
     }
@@ -94,12 +94,12 @@ export const PositionsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         error: err instanceof Error ? err.message : 'An unknown error occurred fetching positions',
       });
     }
-  }, [userAddress]); // Add userAddress to dependency array
+  }, [wallet?.address]); // Add wallet addressSend to dependency array
 
   useEffect(() => {
-    // Fetch positions when the component mounts or when userAddress changes
+    // Fetch positions when the component mounts or when wallet address changes
     fetchPositions();
-  }, [fetchPositions]); // fetchPositions itself depends on userAddress
+  }, [fetchPositions]); // fetchPositions itself depends on wallet address
 
   const refetchPositions = () => {
     fetchPositions();
