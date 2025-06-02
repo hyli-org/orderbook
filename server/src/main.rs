@@ -27,7 +27,7 @@ use server::{
 };
 use sp1_sdk::{Prover, ProverClient};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 use tracing::error;
@@ -40,6 +40,9 @@ pub struct Args {
 
     #[arg(long, default_value = "orderbook")]
     pub orderbook_cn: String,
+
+    #[arg(long, default_value = "wallet")]
+    pub wallet_cn: String,
 }
 
 #[tokio::main]
@@ -82,7 +85,7 @@ async fn main() -> Result<()> {
         return Ok(());
     };
 
-    let default_state = Orderbook::init_with_fake_data(validator_lane_id.clone());
+    let default_state = Orderbook::init(validator_lane_id.clone());
 
     let contracts = vec![init::ContractInit {
         name: args.orderbook_cn.clone().into(),
@@ -118,20 +121,31 @@ async fn main() -> Result<()> {
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
 
-    let initial_contracts = HashMap::from([(
-        args.orderbook_cn.clone().into(),
-        ContractBox::new(default_state.clone()),
-    )]);
+    let initial_contracts = BTreeMap::from([
+        (
+            args.orderbook_cn.clone().into(),
+            ContractBox::new(default_state.clone()),
+        ),
+        (
+            args.wallet_cn.clone().into(),
+            ContractBox::new(wallet::Wallet::default()),
+        ),
+    ]);
 
     handler
         .build_module::<RollupExecutor>(RollupExecutorCtx {
             data_directory: config.data_directory.clone(),
             initial_contracts,
             validator_lane_id,
+            watched_contracts: BTreeSet::from([args.orderbook_cn.clone().into()]),
             contract_deserializer: |state: Vec<u8>, contract_name: &ContractName| {
                 match contract_name.0.as_str() {
                     "orderbook" => ContractBox::new(
                         borsh::from_slice::<Orderbook>(&state)
+                            .expect("Deserializing orderbook state"),
+                    ),
+                    "wallet" => ContractBox::new(
+                        borsh::from_slice::<wallet::Wallet>(&state)
                             .expect("Deserializing orderbook state"),
                     ),
                     _ => panic!("Unknown contract name: {}", contract_name.0),

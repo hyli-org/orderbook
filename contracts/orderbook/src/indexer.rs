@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::str;
 
 use anyhow::{anyhow, Result};
@@ -233,7 +233,7 @@ pub struct CandleStick {
 pub async fn get_pair_candles(
     State(state): State<ContractHandlerStore<Orderbook>>,
     axum::extract::Path((base_token, quote_token)): axum::extract::Path<(String, String)>,
-    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+    axum::extract::Query(params): axum::extract::Query<BTreeMap<String, String>>,
 ) -> Result<impl IntoResponse, AppError> {
     let store = state.read().await;
 
@@ -284,15 +284,15 @@ impl Orderbook {
     pub fn get_state(&self) -> Self {
         self.clone()
     }
-    pub fn get_balances(&self) -> HashMap<String, HashMap<String, u32>> {
+    pub fn get_balances(&self) -> BTreeMap<String, BTreeMap<String, u32>> {
         self.balances.clone()
     }
 
-    pub fn get_balance_for_account(&self, account: &str) -> Option<HashMap<String, u32>> {
+    pub fn get_balance_for_account(&self, account: &str) -> Option<BTreeMap<String, u32>> {
         self.balances.get(account).cloned()
     }
 
-    pub fn get_orders(&self) -> HashMap<String, Order> {
+    pub fn get_orders(&self) -> BTreeMap<String, Order> {
         self.orders.clone()
     }
 
@@ -339,7 +339,7 @@ impl Orderbook {
         &self,
         base_token: &str,
         quote_token: &str,
-    ) -> HashMap<TimestampMs, u32> {
+    ) -> BTreeMap<TimestampMs, u32> {
         let pair = (base_token.to_string(), quote_token.to_string());
         self.orders_history.get(&pair).cloned().unwrap_or_default()
     }
