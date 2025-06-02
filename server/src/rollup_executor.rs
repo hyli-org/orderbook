@@ -1,6 +1,6 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use client_sdk::transaction_builder::{OptimisticCommitments, TxExecutorHandler};
+use client_sdk::transaction_builder::TxExecutorHandler;
 use hyle_modules::{
     bus::{BusClientSender, SharedMessageBus},
     log_error, module_bus_client, module_handle_messages,
@@ -8,7 +8,7 @@ use hyle_modules::{
 };
 use sdk::{
     BlobTransaction, Block, BlockHeight, Calldata, ContractName, Hashed, HyleOutput, Identity,
-    LaneId, MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash,
+    LaneId, MempoolStatusEvent, NodeStateEvent, TransactionData, TxContext, TxHash, ZkContract,
 };
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -42,7 +42,7 @@ impl DerefMut for RollupExecutor {
     }
 }
 
-pub trait RollupContract: TxExecutorHandler + Debug + Send + Sync + OptimisticCommitments {
+pub trait RollupContract: ZkContract + TxExecutorHandler + Debug + Send + Sync {
     fn clone_box(&self) -> Box<dyn RollupContract>;
     fn borsh_serialize_box(&self) -> Result<Vec<u8>, std::io::Error>;
     fn as_any(&self) -> &dyn Any;
@@ -51,7 +51,7 @@ pub trait RollupContract: TxExecutorHandler + Debug + Send + Sync + OptimisticCo
 impl<T> RollupContract for T
 where
     T: 'static
-        + OptimisticCommitments
+        + ZkContract
         + TxExecutorHandler
         + BorshSerialize
         + BorshDeserialize
@@ -80,8 +80,8 @@ pub struct ContractBox {
 impl ContractBox {
     pub fn new<T>(inner: T) -> Self
     where
-        T: TxExecutorHandler
-            + OptimisticCommitments
+        T: ZkContract
+            + TxExecutorHandler
             + Clone
             + Debug
             + BorshSerialize
@@ -99,7 +99,8 @@ impl ContractBox {
 
     pub fn downcast<T>(&self) -> Option<&T>
     where
-        T: TxExecutorHandler
+        T: ZkContract
+            + TxExecutorHandler
             + Clone
             + Debug
             + BorshSerialize
@@ -518,14 +519,14 @@ impl RollupExecutor {
     }
 
     pub fn rerun_from_settled(&mut self) -> Result<()> {
-        let mut optimistic_commitments = BTreeMap::new();
+        let mut optimistic_commits = BTreeMap::new();
         for contract_name in &self.watched_contracts {
             let commitment = self
                 .optimistic_states
                 .get(contract_name)
                 .unwrap()
-                .optimistic_commitments()?;
-            optimistic_commitments.insert(contract_name.clone(), commitment);
+                .partial_commit();
+            optimistic_commits.insert(contract_name.clone(), commitment);
         }
         // Revert each contract to the settled state.
         for (contract_name, state) in self.settled_states.clone() {
@@ -552,8 +553,8 @@ impl RollupExecutor {
                 .optimistic_states
                 .get(contract_name)
                 .unwrap()
-                .optimistic_commitments()?;
-            if new_commitment != optimistic_commitments[contract_name] {
+                .partial_commit();
+            if new_commitment != optimistic_commits[contract_name] {
                 anyhow::bail!(
                     "Optimistic state commitment for contract {} has changed after rerun",
                     contract_name

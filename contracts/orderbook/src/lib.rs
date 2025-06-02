@@ -8,8 +8,6 @@ use sdk::{hyle_model_utils::TimestampMs, BlockHeight, ContractName, LaneId, RunR
 pub mod client;
 #[cfg(feature = "client")]
 pub mod indexer;
-#[cfg(feature = "client")]
-pub mod optimistic_commitments;
 
 impl sdk::ZkContract for Orderbook {
     /// Entry point of the contract's logic
@@ -85,6 +83,14 @@ impl sdk::ZkContract for Orderbook {
     /// In this example, we serialize the full state on-chain.
     fn commit(&self) -> sdk::StateCommitment {
         sdk::StateCommitment(self.as_bytes().expect("Failed to encode Orderbook"))
+    }
+
+    fn partial_commit(&self) -> sdk::StateCommitment {
+        let mut partial_state = self.clone();
+        partial_state.latest_deposit = Default::default();
+
+
+        sdk::StateCommitment(borsh::to_vec(&partial_state).expect("Failed to encode Orderbook partial state"))
     }
 }
 
