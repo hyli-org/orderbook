@@ -175,6 +175,8 @@ async fn main() -> Result<()> {
             contract_name: args.orderbook_cn.clone().into(),
             node: node_client.clone(),
             default_state,
+            buffer_blocks: config.buffer_blocks,
+            max_txs_per_proof: config.max_txs_per_proof,
         }))
         .await?;
 
