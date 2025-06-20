@@ -14,7 +14,7 @@ wallet = { workspace = true, features = ["client"] }
 orderbook = { workspace = true, features = ["client"] }
 contracts = { workspace = true, features = [] }
 
-sp1-sdk = { version = "4.1.3", default-features = false, features = [
+sp1-sdk = { version = "5.0.1", default-features = false, features = [
     "network",
 ] }
 
