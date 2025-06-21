@@ -28,4 +28,8 @@ impl TxExecutorHandler for Orderbook {
         borsh::from_slice(&register_blob.state_commitment.0)
             .context("Failed to decode Orderbook state")
     }
+
+    fn get_state_commitment(&self) -> sdk::StateCommitment {
+        self.commit()
+    }
 }

@@ -18,6 +18,9 @@ use hyle_modules::{
 use orderbook::{Orderbook, OrderbookEvent};
 use prometheus::Registry;
 use sdk::{api::NodeInfo, info, ContractName, ZkContract};
+use secp256k1::PublicKey;
+use secp256k1::Secp256k1;
+use secp256k1::SecretKey;
 use server::conf::Conf;
 use server::init;
 use server::rollup_executor::{RollupExecutor, RollupExecutorCtx};
@@ -26,11 +29,14 @@ use server::{
     rollup_executor::ContractBox,
 };
 use sp1_sdk::{Prover, ProverClient};
+use std::env;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 use tracing::error;
+use wallet::client::tx_executor_handler::Wallet;
+use wallet::client::tx_executor_handler::WalletConstructor;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -117,6 +123,19 @@ async fn main() -> Result<()> {
         default_state: default_state.clone(),
     });
 
+    let secp = Secp256k1::new();
+    let secret_key =
+        hex::decode(env::var("INVITE_CODE_PKEY").unwrap_or(
+            "0000000000000001000000000000000100000000000000010000000000000001".to_string(),
+        ))
+        .expect("INVITE_CODE_PKEY must be a hex string");
+    let secret_key = SecretKey::from_slice(&secret_key).expect("32 bytes, within curve order");
+    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+
+    let hyli_password = env::var("HYLI_PASSWORD").unwrap_or("hylisecure".to_string());
+    let wallet_constructor = WalletConstructor::new(hyli_password, public_key.serialize());
+    let wallet = Wallet::new(&Some(wallet_constructor.clone())).expect("must succeed");
+
     handler
         .build_module::<OrderbookModule>(orderbook_ctx.clone())
         .await?;
@@ -126,10 +145,7 @@ async fn main() -> Result<()> {
             args.orderbook_cn.clone().into(),
             ContractBox::new(default_state.clone()),
         ),
-        (
-            args.wallet_cn.clone().into(),
-            ContractBox::new(wallet::Wallet::default()),
-        ),
+        (args.wallet_cn.clone().into(), ContractBox::new(wallet)),
     ]);
 
     handler
@@ -145,8 +161,7 @@ async fn main() -> Result<()> {
                             .expect("Deserializing orderbook state"),
                     ),
                     "wallet" => ContractBox::new(
-                        borsh::from_slice::<wallet::Wallet>(&state)
-                            .expect("Deserializing orderbook state"),
+                        borsh::from_slice::<Wallet>(&state).expect("Deserializing orderbook state"),
                     ),
                     _ => panic!("Unknown contract name: {}", contract_name.0),
                 }
@@ -177,6 +192,7 @@ async fn main() -> Result<()> {
             default_state,
             buffer_blocks: config.buffer_blocks,
             max_txs_per_proof: config.max_txs_per_proof,
+            tx_working_window_size: config.tx_working_window_size,
         }))
         .await?;
 

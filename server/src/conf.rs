@@ -25,6 +25,8 @@ pub struct Conf {
 
     /// Websocket configuration
     pub websocket: WebSocketConfig,
+
+    pub tx_working_window_size: usize,
 }
 
 impl Conf {

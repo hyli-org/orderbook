@@ -9,6 +9,9 @@ pub mod client;
 #[cfg(feature = "client")]
 pub mod indexer;
 
+
+impl sdk::FullStateRevert for Orderbook {}
+
 impl sdk::ZkContract for Orderbook {
     /// Entry point of the contract's logic
     fn execute(&mut self, calldata: &sdk::Calldata) -> RunResult {
