@@ -536,7 +536,7 @@ impl RollupExecutor {
         // Re-execute all sequenced_unsettled transactions
         for (blob_tx, tx_ctx) in self.unsettled_sequenced_txs.clone() {
             // A reexecution cannot actually fail. Only hyle_output.success can be false
-            // What matters is the optimistic commitments comparaison
+            // What matters is the optimistic commitments comparison
             let _ =
                 Self::execute_blob_tx(&mut self.optimistic_states, &blob_tx, Some(tx_ctx.clone()));
         }
