@@ -111,7 +111,7 @@ impl Module for OrderbookModule {
 
     async fn run(&mut self) -> Result<()> {
         module_handle_messages! {
-            on_bus self.bus,
+            on_self self,
 
             listen<RollupExecutorEvent> event => {
                 self.handle_rollup_executor_event(event).await?;

@@ -258,7 +258,7 @@ impl Module for RollupExecutor {
 
     async fn run(&mut self) -> Result<()> {
         module_handle_messages! {
-            on_bus self.bus,
+            on_self self,
             listen<NodeStateEvent> event => {
                 _ = log_error!(self.handle_node_state_event(event).await, "handle note state event")
             }
